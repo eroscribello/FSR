@@ -59,7 +59,8 @@ To execute the hexapod simulation framework:
    ```matlab
    run('MAIN.m')
 
-UPDATE ANDREA RUSSO
+
+# UPDATE ANDREA RUSSO
 
 # RF-MPC su esapode PhantomX — stato del porting
 
