@@ -28,7 +28,7 @@ MAX_ITER = floor(SimTimeDuration/p.simTimeStep);
 
 % desired trajectory
 p.acc_d = 1;
-p.vel_d = [0.5;0];
+p.vel_d = [0.3;0];
 p.yaw_d = 0;
 
 %% Model Predictive Control

@@ -1,209 +1,41 @@
 function fig_plot_robot_d(Xd,Ud,p)
+% Disegno della posa DESIDERATA (corpo trasparente + GRF di riferimento).
+% Le gambe non vengono disegnate (come nell'originale).
 
-%% parameters
-L = p.L;
-W = p.W;
-h = p.h;
-
+nLeg = p.nLeg;
+h    = p.h;
 body_color = p.body_color;
-leg_color = p.leg_color;
-ground_color = p.ground_color;
 
 %% unpack
-% X = [pc dpc vR wb pf]'
-pcom =    reshape(Xd(1:3),[3,1]);
-dpc =   reshape(Xd(4:6),[3,1]);
-R =     reshape(Xd(7:15),[3,3]);
-wb =    reshape(Xd(16:18),[3,1]);
-pf34 =  reshape(Xd(19:30),[3,4]);
+pcom = reshape(Xd(1:3),[3,1]);
+R    = reshape(Xd(7:15),[3,3]);
 
-% GRF
-f34 = reshape(Ud,[3,4]);
+idx_pf = 18 + (1:3*nLeg);
+pf = reshape(Xd(idx_pf),[3,nLeg]);
+f  = reshape(Ud,[3,nLeg]);
 
+%% ---- corpo trasparente: prisma esagonale ----
+perim  = [1 3 5 6 4 2];
+hip_lo = p.p_hip(:,perim);
+hip_up = hip_lo + repmat([0;0;h],[1,nLeg]);
 
-%% forward kinematics
-% hips
-Twd2com = [R,    pcom;
-           0 0 0 1];
-Tcom2h1 = [eye(3) [L/2 W/2 0]';
-            0 0 0 1];
-Tcom2h2 = [eye(3) [L/2 -W/2 0]';
-            0 0 0 1];
-Tcom2h3 = [eye(3) [-L/2 W/2 0]';
-            0 0 0 1];
-Tcom2h4 = [eye(3) [-L/2 -W/2 0]';
-            0 0 0 1];
-Twd2h1 = Twd2com * Tcom2h1;
-Twd2h2 = Twd2com * Tcom2h2;
-Twd2h3 = Twd2com * Tcom2h3;
-Twd2h4 = Twd2com * Tcom2h4;
+P_lo = R*hip_lo + repmat(pcom,[1,nLeg]);
+P_up = R*hip_up + repmat(pcom,[1,nLeg]);
 
-p_h1_wd = Twd2h1(1:3,4);
-p_h2_wd = Twd2h2(1:3,4);
-p_h3_wd = Twd2h3(1:3,4);
-p_h4_wd = Twd2h4(1:3,4);
-
-% body offset up by h
-Tcom2h1_up = [eye(3) [L/2 W/2 h]';
-            0 0 0 1];
-Tcom2h2_up = [eye(3) [L/2 -W/2 h]';
-            0 0 0 1];
-Tcom2h3_up = [eye(3) [-L/2 W/2 h]';
-            0 0 0 1];
-Tcom2h4_up = [eye(3) [-L/2 -W/2 h]';
-            0 0 0 1];
-Twd2h1_up = Twd2com * Tcom2h1_up;
-Twd2h2_up = Twd2com * Tcom2h2_up;
-Twd2h3_up = Twd2com * Tcom2h3_up;
-Twd2h4_up = Twd2com * Tcom2h4_up;
-
-p_h1_up = Twd2h1_up(1:3,4);
-p_h2_up = Twd2h2_up(1:3,4);
-p_h3_up = Twd2h3_up(1:3,4);
-p_h4_up = Twd2h4_up(1:3,4);
-
-chain1 = [p_h1_wd,p_h2_wd,p_h4_wd,p_h3_wd];
-chain2 = [p_h1_wd,p_h2_wd,p_h2_up,p_h1_up];
-chain3 = [p_h1_wd,p_h3_wd,p_h3_up,p_h1_up];
-chain4 = [p_h3_wd,p_h4_wd,p_h4_up,p_h3_up];
-chain5 = [p_h4_wd,p_h2_wd,p_h2_up,p_h4_up];
-chain6 = [p_h1_up,p_h2_up,p_h4_up,p_h3_up];
-
-%% inverse kinematics
-
-% --- the main line ---
-q = zeros(12,1);
-chain_leg = zeros(3,4,4);
-for i_leg = 1:4
-    if i_leg == 1
-        p.sign_L = 1;
-        p.sign_d = 1;
-    elseif i_leg == 2
-        p.sign_L = 1;
-        p.sign_d = -1;
-    elseif i_leg == 3
-        p.sign_L = -1;
-        p.sign_d = 1;
-    elseif i_leg == 4
-        p.sign_L = -1;
-        p.sign_d = -1;
-    end
-    
-    q_idx = 3*(i_leg - 1) + (1:3); %3*i_leg-2 : 3*i_leg;
-    q(q_idx) = fcn_invKin3(Xd,pf34(:,i_leg),p);
-    chain_leg(:,:,i_leg) = legKin(Twd2com,q(q_idx),p);
+f1 = fill3(P_lo(1,:),P_lo(2,:),P_lo(3,:),body_color);  alpha(f1,0.2)
+f2 = fill3(P_up(1,:),P_up(2,:),P_up(3,:),body_color);  alpha(f2,0.2)
+for k = 1:nLeg
+    k2 = mod(k,nLeg) + 1;
+    face = [P_lo(:,k), P_lo(:,k2), P_up(:,k2), P_up(:,k)];
+    fk = fill3(face(1,:),face(2,:),face(3,:),body_color);
+    alpha(fk,0.2)
 end
-% ---------------------
-chain_leg1 = chain_leg(:,:,1);
-chain_leg2 = chain_leg(:,:,2);
-chain_leg3 = chain_leg(:,:,3);
-chain_leg4 = chain_leg(:,:,4);
 
-%% plot
-
-% body
-f1 = fill3(chain1(1,:),chain1(2,:),chain1(3,:),body_color,...
-           chain2(1,:),chain2(2,:),chain2(3,:),body_color,...
-           chain3(1,:),chain3(2,:),chain3(3,:),body_color,...
-           chain4(1,:),chain4(2,:),chain4(3,:),body_color,...
-           chain5(1,:),chain5(2,:),chain5(3,:),body_color,...
-           chain6(1,:),chain6(2,:),chain6(3,:),body_color);
-alpha(f1,0.2)
-
-% 
-% % legs
-% plot3(chain_leg1(1,:),chain_leg1(2,:),chain_leg1(3,:),'linewidth',3,'color',leg_color)
-% plot3(chain_leg2(1,:),chain_leg2(2,:),chain_leg2(3,:),'linewidth',3,'color',leg_color)
-% plot3(chain_leg3(1,:),chain_leg3(2,:),chain_leg3(3,:),'linewidth',3,'color',leg_color)
-% plot3(chain_leg4(1,:),chain_leg4(2,:),chain_leg4(3,:),'linewidth',3,'color',leg_color)
-% 
-% % feet
-% plot3(pf34(1,1),pf34(2,1),pf34(3,1),'o','MarkerFaceColor',leg_color,'MarkerEdgeColor',leg_color)
-% plot3(pf34(1,2),pf34(2,2),pf34(3,2),'o','MarkerFaceColor',leg_color,'MarkerEdgeColor',leg_color)
-% plot3(pf34(1,3),pf34(2,3),pf34(3,3),'o','MarkerFaceColor',leg_color,'MarkerEdgeColor',leg_color)
-% plot3(pf34(1,4),pf34(2,4),pf34(3,4),'o','MarkerFaceColor',leg_color,'MarkerEdgeColor',leg_color)
-% 
-% 
-% GRF
-scale = 1e-2;
-for i_leg = 1:4
-    chain_f = [pf34(:,i_leg),pf34(:,i_leg) + scale * f34(:,i_leg)];
+%% ---- GRF di riferimento ----
+if isfield(p,'forceScale'), scale = p.forceScale; else, scale = 2e-2; end
+for i_leg = 1:nLeg
+    chain_f = [pf(:,i_leg), pf(:,i_leg) + scale * f(:,i_leg)];
     plot3(chain_f(1,:),chain_f(2,:),chain_f(3,:),'g','linewidth',1.5)
 end
 
-
 end
-
-
-function chain = legKin(Twd2com,q,p)
-    L = p.L;
-    W = p.W;
-    d = p.d;
-    l1 = p.l1;
-    l2 = p.l2;
-    sign_L = p.sign_L;
-    sign_d = p.sign_d;
-    
-    Tcom2h = [rx(q(1)) [sign_L*L/2 sign_d*W/2 0]';
-                0 0 0 1];
-    Th2s = [ry(q(2)) [0 sign_d*d 0]';
-                0 0 0 1];
-    Ts2k = [ry(q(3)) [l1 0 0]';
-                0 0 0 1];
-    Tk2f = [eye(3) [l2 0 0]';
-                0 0 0 1];
-    Twd2h = Twd2com * Tcom2h;
-    Twd2s = Twd2h * Th2s;
-    Twd2k = Twd2s * Ts2k;
-    Twd2f = Twd2k * Tk2f;
-
-    p_h_wd = Twd2h(1:3,4);
-    p_s_wd = Twd2s(1:3,4);
-    p_k_wd = Twd2k(1:3,4);
-    p_f_wd = Twd2f(1:3,4);
-
-    chain = [p_h_wd p_s_wd p_k_wd p_f_wd];
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

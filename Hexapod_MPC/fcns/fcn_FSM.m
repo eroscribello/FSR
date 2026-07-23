@@ -1,80 +1,84 @@
 function [FSMout,Xd,Ud,Xt] = fcn_FSM(t_,Xt,p)
+% FSM andatura TRIPODE per esapode PhantomX.
+% Ordine gambe: 1=LF  2=RF  3=LM  4=RM  5=LH  6=RH
+% Tripode A = {1,4,5}   Tripode B = {2,3,6}   (antifase di mezzo periodo)
+
 %% parameters
-[L,W,d] = deal(p.L,p.W,p.d);
+nLeg = p.nLeg;
 gait = p.gait;
+
+% --- costanti di SCALA (tarate sul PhantomX, non sul quadrupede) ---
+% Si possono sovrascrivere da get_params senza toccare questo file.
+if isfield(p,'stepLenRef'),  stepLenRef  = p.stepLenRef;  else, stepLenRef  = 0.05; end % era 0.2 (quad)
+if isfield(p,'stepClamp'),   stepClamp   = p.stepClamp;   else, stepClamp   = 0.05; end % era 0.15 (quad)
+if isfield(p,'swingHeight'), swingHeight = p.swingHeight; else, swingHeight = 0.025; end % era 0.1 (quad!)
+
 Tst_ = p.Tst;
-Tst = min(Tst_,0.2/norm(Xt(4:5)));
+vxy  = norm(Xt(4:5));
+if vxy > 1e-6
+    Tst = min(Tst_, stepLenRef/vxy);
+else
+    Tst = Tst_;
+end
 Tsw = p.Tsw;
-T = Tst + Tsw;
-Tair = 1/2 * (Tsw - Tst);
+
 [pc,dpc,vR,wb] = deal(Xt(1:3),Xt(4:6),Xt(7:15),Xt(16:18));
 R = reshape(vR,[3,3]);
 
-% --- MODIFICA 1: Indici per 6 zampe (18 elementi invece di 12) ---
-idx_pf = 19:36; 
-pf34 = reshape(Xt(idx_pf),[3,6]);
+idx_pf = 18 + (1:3*nLeg);              % 19:36
+pf = reshape(Xt(idx_pf),[3,nLeg]);
 
 %% initialization
 persistent FSM Ta Tb pf_R_trans
 if isempty(FSM)
-    % --- MODIFICA 2: Inizializzazione per 6 elementi ---
-    FSM = zeros(6,1);
-    Ta = zeros(6,1);
-    Tb = ones(6,1);
+    FSM = zeros(nLeg,1);
+    Ta  = zeros(nLeg,1);
+    Tb  = ones(nLeg,1);
     pf_R_trans = Xt(idx_pf);
 end
-t = t_(1);      % current time
-s = zeros(6,1); % 6 zampe
+
+t = t_(1);
+s = zeros(nLeg,1);
 
 %% FSM
-% 1 - stance
-% 2 - swing
-for i_leg = 1:6 % --- MODIFICA 3: Ciclo esteso a 6 zampe ---
-    s(i_leg) = (t - Ta(i_leg)) ./ (Tb(i_leg) - Ta(i_leg));
-    s(s<0) = 0;
-    s(s>1) = 1;
-    % --- FSM ---
-    if FSM(i_leg) == 0          % init to stance
-        if gait == -1           % pose control
+% 1 - stance   2 - swing
+for i_leg = 1:nLeg
+    s(i_leg) = (t - Ta(i_leg)) / (Tb(i_leg) - Ta(i_leg));
+    s(s<0) = 0;  s(s>1) = 1;
+
+    if FSM(i_leg) == 0              % init
+        if gait == -1               % pose control
             Ta(i_leg) = 0;
             Tb(i_leg) = -1;
-        elseif gait == 5        % crawl (esapode)
-            % Sequenza sequenziale per 6 zampe
-            Ta(1) = t;
-            Ta(2) = t + Tsw;
-            Ta(3) = t + Tsw*2;
-            Ta(4) = t + Tsw*3;
-            Ta(5) = t + Tsw*4;
-            Ta(6) = t + Tsw*5;
+        elseif gait == 5            % wave/crawl esapode (una zampa alla volta)
+            Ta = t + Tsw*(0:nLeg-1)';
             Tb(i_leg) = Ta(i_leg) + Tst;
-        else                    % Tripod Gait (Default per esapode, ex trot)
-            % Gruppo A: LF (1), RM (4), LH (5)
-            % Gruppo B: RF (2), LM (3), RH (6)
-            Ta([1,4,5]) = [t;t;t];
-            Ta([2,3,6]) = [1;1;1] * (t + 1/2*(Tst + Tsw));
-            Tb(i_leg) = Ta(i_leg) + Tst;
+        else                        % TRIPODE (default)
+            Ta([1,4,5]) = t;
+            Ta([2,3,6]) = t + 1/2*(Tst + Tsw);
+            Tb(i_leg)   = Ta(i_leg) + Tst;
         end
-        FSM(i_leg) = FSM(i_leg) + 1;
-        pf_R_trans = Xt(idx_pf);
-    elseif FSM(i_leg) == 1 && (s(i_leg) >= 1 - 1e-7)    % stance to swing
-         FSM(i_leg) = FSM(i_leg) + 1;
-        Ta(i_leg) = t;
-        Tb(i_leg) = Ta(i_leg) + Tsw;
-        pf_R_trans = Xt(idx_pf);
-    elseif FSM(i_leg) == 2 && (s(i_leg) >= 1 - 1e-7)    % swing to stance
         FSM(i_leg) = 1;
-        Ta(i_leg) = t;
-        Tb(i_leg) = Ta(i_leg) + Tst;
+        pf_R_trans = Xt(idx_pf);
+    elseif FSM(i_leg) == 1 && (s(i_leg) >= 1 - 1e-7)    % stance -> swing
+        FSM(i_leg) = 2;
+        Ta(i_leg)  = t;
+        Tb(i_leg)  = Ta(i_leg) + Tsw;
+        pf_R_trans = Xt(idx_pf);
+    elseif FSM(i_leg) == 2 && (s(i_leg) >= 1 - 1e-7)    % swing -> stance
+        FSM(i_leg) = 1;
+        Ta(i_leg)  = t;
+        Tb(i_leg)  = Ta(i_leg) + Tst;
         pf_R_trans = Xt(idx_pf);
     end
 end
-s = (t - Ta) ./ (Tb - Ta);
-s(s<0) = 0;
-s(s>1) = 1;
 
-%% FSM in prediction horizon
+s = (t - Ta) ./ (Tb - Ta);
+s(s<0) = 0;  s(s>1) = 1;
+
+%% FSM lungo l'orizzonte di predizione
 FSM_ = repmat(FSM,[1,p.predHorizon]);
-for i_leg = 1:6 % --- MODIFICA 4: Ciclo esteso a 6 zampe ---
+for i_leg = 1:nLeg
     for ii = 2:p.predHorizon
         if t_(ii) <= Ta(i_leg)
             FSM_(i_leg,ii) = 1;
@@ -91,62 +95,50 @@ for i_leg = 1:6 % --- MODIFICA 4: Ciclo esteso a 6 zampe ---
         end
     end
 end
-if gait == -1       % pose
+
+if gait == -1
     FSM_ = ones(size(FSM_));
 end
-% [6,predHorizon]: bool matrix
-bool_inStance = (FSM_ == 1);
 
-%% Gen ref traj
-% --- Xd/Ud ---
+bool_inStance = (FSM_ == 1);       % [nLeg, predHorizon]
+
+%% riferimento
 [Xd,Ud] = fcn_gen_XdUd(t_,Xt,bool_inStance,p);
 
-%% swing leg kinematics
-% --- MODIFICA 5: Posizioni degli hip (anche per le zampe medie) ---
-% Struttura: [LF, RF, LM, RM, LH, RH]
-p_hip_b = [ ...
-    [ L/2;  W/2+d; 0], ... % 1. LF
-    [ L/2; -W/2-d; 0], ... % 2. RF
-    [   0;  W/2+d; 0], ... % 3. LM (Medio sx)
-    [   0; -W/2-d; 0], ... % 4. RM (Medio dx)
-    [-L/2;  W/2+d; 0], ... % 5. LH
-    [-L/2; -W/2-d; 0]  ... % 6. RH
-];
+%% swing leg
+% Posizioni ANCHE dal URDF (layout ESAGONALE: le centrali sporgono di piu' in y).
+% Era ricostruito come rettangolo da L/W/d -> sbagliato per il PhantomX.
+p_hip_b = p.p_hip;                 % 3 x nLeg
 p_hip_R = R * p_hip_b;
+p_nom_R = R * p.pf36;              % <-- AGGIUNGI: stance nominale allargata
 ws = R * wb;
-v_hip_R = repmat(dpc,[1,6]) + hatMap(ws) * p_hip_R;
+v_hip_R = repmat(dpc,[1,nLeg]) + hatMap(ws) * p_hip_R;
 
 % capture point
-p_cap = zeros(2,6); % --- MODIFICA 6: Esteso a 6 zampe ---
+p_cap = zeros(2,nLeg);
 vd = Xd(4:5,1);
-for i_leg = 1:6
+for i_leg = 1:nLeg
     temp = 0.8 * Tst * vd + sqrt(p.z0/p.g) * (v_hip_R(1:2,i_leg) - vd);
-    temp(temp < -0.15) = -0.15;
-    temp(temp > 0.15) = 0.15;
-    p_cap(:,i_leg) = pc(1:2) + p_hip_R(1:2,i_leg) + temp;
+    temp(temp < -stepClamp) = -stepClamp;
+    temp(temp >  stepClamp) =  stepClamp;
+    p_cap(:,i_leg) = pc(1:2) + p_nom_R(1:2,i_leg) + temp;   % <-- era p_hip_R
 end
 
-% desired foot placement
-if p.gait == -2     % GOT
-    Rg = fcn_GOT_Rg_BB(t,p);
-    % --- MODIFICA 7: Aggiornamento dimensioni per 6 zampe ---
-    Xt(idx_pf) = reshape(Rg * p.pf34,[18,1]); 
-    Xd(idx_pf,:) = repmat(Xt(idx_pf),[1,p.predHorizon]);
-else
-    pfd = Xt(idx_pf);
-    for i_leg = 1:6 % --- MODIFICA 8: Ciclo esteso a 6 zampe ---
-        idx = 3*(i_leg-1) + (1:3);
-        if FSM(i_leg) == 2
-            co_x = linspace(pf_R_trans(idx(1)),p_cap(1,i_leg),6);
-            co_y = linspace(pf_R_trans(idx(2)),p_cap(2,i_leg),6);
-            co_z = [0 0 0.1 0.1 0 -0.002];
-            pfd(idx) = [polyval_bz(co_x,s(i_leg));
-                        polyval_bz(co_y,s(i_leg));
-                        polyval_bz(co_z,s(i_leg))];
-        end
+% traiettoria del piede in volo
+pfd = Xt(idx_pf);
+for i_leg = 1:nLeg
+    idx = 3*(i_leg-1) + (1:3);
+    if FSM(i_leg) == 2
+        co_x = linspace(pf_R_trans(idx(1)),p_cap(1,i_leg),6);
+        co_y = linspace(pf_R_trans(idx(2)),p_cap(2,i_leg),6);
+        % altezza di sollevamento: era 0.1 m (piu' alta del corpo!)
+        co_z = [0 0 swingHeight swingHeight 0 -0.002];
+        pfd(idx) = [polyval_bz(co_x,s(i_leg));
+                    polyval_bz(co_y,s(i_leg));
+                    polyval_bz(co_z,s(i_leg))];
     end
-    Xd(idx_pf,:) = repmat(pfd,[1,p.predHorizon]);
 end
+Xd(idx_pf,:) = repmat(pfd,[1,p.predHorizon]);
 
 %% output
 FSMout = FSM;

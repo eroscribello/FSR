@@ -38,7 +38,7 @@ for ii = 1:lent
     end
     
     % --- MODIFICA 2: Reshape a 18 elementi per le posizioni dei 6 piedi ---
-    pfd = reshape(Rground * p.pf34,[18,1]);
+    pfd = reshape(Rground * p.pf36,[18,1]);
     Xd(:,ii) = [pc_d;dpc_d;vR_d;wb_d;pfd];
     
     %%%% force
