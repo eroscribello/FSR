@@ -24,27 +24,32 @@ p.freq = 30;
 p.Rground = eye(3);
 p.Qf = diag([1e5 2e5 3e5 5e2 1e3 150 1e3 1e4 800 40 40 10]);
 
-% ---- gait ----
-% Per l'esapode si usa gait = 0 -> TRIPODE.
-% Q/Qf restano 12x12 (pesano lo stato del corpo); solo R scala a 3*nLeg.
-if gait == 5                % wave/crawl: una zampa alla volta
-    p.Tst = 0.30;
-    p.Tsw = 0.10;
-    p.R = diag(repmat([0.1 0.2 0.1]',[p.nLeg,1]));
-    p.Q = diag([5e5 5e5 9e5 5 5 5 3e3 3e3 3e3 3 3 3]);
-else                        % 0 - TRIPODE (ramo usato)
-    p.predHorizon = 6;
-    p.simTimeStep = 1/100;
-    p.Tmpc = 8/100;
-    % Tst = Tsw -> alternanza pulita dei due tripodi.
-    % (con Tst ~= Tsw restano istanti con tutte e 6 le zampe a terra: non e'
-    %  un errore, ma il tripode non e' piu' perfettamente alternato)
-    p.Tst = 0.20;           % era 0.3 (quad)
-    p.Tsw = 0.20;           % era 0.15 (quad)
-    p.R = diag(repmat([0.1 0.2 0.1]',[p.nLeg,1]));
-    p.Q = diag([1e5 2e5 3e5 5e2 1e3 1e3 1e3 1e4 800 40 40 10]);
-    p.Qf = p.Q;
+% ---- Andature ----
+% Ogni andatura e' definita da: periodo T, duty factor beta, vettore di fasi.
+% Ordine gambe: 1=LF 2=RF 3=LM 4=RM 5=LH 6=RH
+switch gait
+    case 1      % RIPPLE (tetrapode): 4 zampe a terra
+        p.T = 0.45;  p.beta = 2/3;
+        p.phase = [0; 2/3; 1/3; 0; 2/3; 1/3];
+    case 2      % WAVE (metacronale): 5 zampe a terra
+        p.T = 0.72;  p.beta = 5/6;
+        p.phase = [1/3; 5/6; 1/6; 2/3; 0; 1/2];
+    otherwise   % 0 - TRIPODE: 3 zampe a terra
+        p.T = 0.40;  p.beta = 1/2;
+        p.phase = [0; 1/2; 1/2; 0; 0; 1/2];
 end
+p.Tst = p.beta * p.T;          % tempo di appoggio
+p.Tsw = (1 - p.beta) * p.T;    % tempo di volo
+
+% ---- pesi MPC (uguali per tutte le andature) ----
+p.R  = diag(repmat([0.1 0.2 0.1]',[p.nLeg,1]));                % 18x18: pesa le forze
+p.Q  = diag([1e5 2e5 3e5 5e2 1e3 1e3 1e3 1e4 800 40 40 10]);   % 12x12: stato del corpo
+p.Qf = p.Q;
+
+% ---- passi di simulazione e MPC ----
+p.predHorizon = 6;
+p.simTimeStep = 1/100;
+p.Tmpc = 8/100;
 
 %% ---- Parametri fisici PhantomX (da URDF) ----
 p.mass = 1.56;              % [kg] massa totale       (era 11 / quad 5.5)
