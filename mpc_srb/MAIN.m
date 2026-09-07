@@ -12,7 +12,6 @@
 
 %% initialization
 clear all;close all;clc
-addpath fcns fcns_MPC
 
 %% --- parameters ---
 % ---- gait ----
@@ -22,91 +21,11 @@ p = get_params(gait);
 p.playSpeed =1;
 p.flag_movie = 0;       % 1 - make movie
 
-dt_sim = p.simTimeStep;
-SimTimeDuration = 10;  % [sec]
-MAX_ITER = floor(SimTimeDuration/p.simTimeStep);
+SimTimeDuration = 10;
+[out, info] = mpc_loop(p, SimTimeDuration);
 
-% desired trajectory
-p.acc_d = 1;
-p.vel_d = [0.1; 0];
-p.yaw_d = 0;
-
-%% Model Predictive Control
-% --- initial condition ---
-% Xt = [pc dpc vR wb pf]': [30,1]
-[Xt,Ut] = fcn_gen_XdUd(0,[],true(p.nLeg,1),p);
-
-% --- logging ---
-tstart = 0;
-tend = dt_sim;
-
-[tout,Xout,Uout,Xdout,Udout,Uext,FSMout] = deal([]);
-
-% --- simulation ----
-h_waitbar = waitbar(0,'Calculating...');
-tic
-for ii = 1:MAX_ITER
-    % --- time vector ---
-    t_ = dt_sim * (ii-1) + p.Tmpc * (0:p.predHorizon-1);
-    
-    % --- FSM ---
-   [FSM,Xd,Ud,Xt] = fcn_FSM(t_,Xt,p);
-
-    % --- MPC ----
-    % form QP
-    [H,g,Aineq,bineq,Aeq,beq] = fcn_get_QP_form_eta(Xt,Ut,Xd,Ud,p);
-
-    %%
-    % Considering the matrices for the QP obtained from function fcn_get_QP_form_eta, use the QP solver qpSWIFT to 
-    %  solve the quadratic problem with the following form 
-    %  min. 0.5 * x' * H *x + g' * x
-    %  s.t. Aineq *x <= bineq
-    %      Aeq * x <= beq
-    % 
-    % The result of the QP problem should be stored in a variable called zval in order to be used in the following
-
-    % G=[Aineq;Aeq];
-    % h=[bineq;beq];
-    % [sol,basic_info,adv_info] = qpSWIFT(sparse(H),g,sparse(G),h);
-    [sol,basic_info,adv_info] = qpSWIFT(sparse(H),g,sparse(Aeq),beq,sparse(Aineq),bineq);
-    zval=sol;
-    
-    
-    %%
-    
-    
-    %Ut = Ut + zval(1:12); 
-    Ut = Ut + zval(1:18); % gli ingressi sono le 18 forze (3 componenti per ogni gamba)
-    
-    % --- external disturbance ---
-    [u_ext,p_ext] = fcn_get_disturbance(tstart,p);
-    p.p_ext = p_ext;        % position of external force
-    u_ext = 0*u_ext;
-    
-    % --- simulate ---
-    [t,X] = ode45(@(t,X)dynamics_SRB(t,X,Ut,Xd,0*u_ext,p),[tstart,tend],Xt);
-    
-    
-    % --- update ---
-    Xt = X(end,:)';
-    tstart = tend;
-    tend = tstart + dt_sim;
-    
-    % --- log ---  
-    lent = length(t(2:end));
-    tout = [tout;t(2:end)];
-    Xout = [Xout;X(2:end,:)];
-    Uout = [Uout;repmat(Ut',[lent,1])];
-    Xdout = [Xdout;repmat(Xd(:,1)',[lent,1])];
-    Udout = [Udout;repmat(Ud(:,1)',[lent,1])];
-    Uext = [Uext;repmat(u_ext',[lent,1])];
-    FSMout = [FSMout;repmat(FSM',[lent,1])];
-    
-    waitbar(ii/MAX_ITER,h_waitbar,'Calculating...');
-end
-close(h_waitbar)
-fprintf('Calculation Complete!\n')
-toc
+tout = out.tout;  Xout = out.Xout;  Uout = out.Uout;
+Xdout = out.Xdout; Udout = out.Udout; Uext = out.Uext; FSMout = out.FSMout;
 
 %% Animation
 [t,EA,EAd] = fig_animate(tout,Xout,Uout,Xdout,Udout,Uext,p);

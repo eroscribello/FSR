@@ -144,7 +144,13 @@ cfg.floor_off = [0 0 -cfg.floor_dim(3)/2];   % centro del pavimento
 cfg.floor_top = cfg.floor_off(3) + cfg.floor_dim(3)/2;   % quota della superficie
 
 % quota iniziale del corpo
-cfg.body_z0 = 0.25;   % [TARATO] valore in uso, dal vecchio init_gait
+cfg.body_z0 = 0.25;   % [TARATO] margine di caduta iniziale: i giunti partono
+                      % dalla posa URDF, non da quella di appoggio, quindi il
+                      % robot deve avere spazio per sistemarsi mentre cade.
+                      % Con la geometrica (0.11) le sfere partono dentro il
+                      % pavimento e il robot ci passa attraverso. Provato.
+                      % Si potra' scendere a body_z0_geom quando i giunti
+                      % avranno q0 (posa IK) come posizione iniziale.
 % derivazione geometrica, per confronto (vedi controllo in fondo)
 cfg.body_z0_geom = cfg.z0 + cfg.contact.foot_r + cfg.floor_top;   % 0.110 m
 
@@ -233,13 +239,6 @@ end
 % =====================================================================
 % NOTE
 %
-% [VERIFICA 1] body_z0
-%   Il valore in uso e' 0.25 m. La derivazione geometrica (piedi appena
-%   appoggiati) darebbe 0.110 m. La differenza e' 14 cm: all'istante zero
-%   il robot e' in aria e cade, arrivando a terra a circa 1.7 m/s.
-%   Da provare, cambiando SOLO questo:  cfg.body_z0 = cfg.body_z0_geom;
-%   e guardando i primi 0.5 s della quota del corpo.
-
 % [DECISIONE APERTA] tibia 0.12 o 0.15297
 %   Oggi il simulatore rappresenta un robot con tibia da 12 cm, in modo
 %   internamente coerente (IK e sfera di contatto d'accordo). Il robot vero
@@ -257,10 +256,6 @@ end
 %   direttamente nel modello di predizione: vale la pena ricalcolarla con
 %   importrobot sull'URDF e confrontare.
 %
-% [VERIFICA 3] mesh _l e _r
-%   In meshes/ esistono thigh_r.STL e tibia_r.STL, ma l'URDF usa le versioni
-%   _l per tutte e sei le zampe: i frame dei link destri sono gia' ruotati.
-%   NON scambiarle, le zampe destre si scompongono. Provato.
 %
 % [VERIFICA 4] tau_max
 %   1.5 N*m e' la coppia di stallo di datasheet, che un servo non eroga in

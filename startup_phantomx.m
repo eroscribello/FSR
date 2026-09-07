@@ -27,6 +27,7 @@ daAggiungere = {
     'common'
     'simscape'
     'mpc_srb'
+    'metriche'
     fullfile('mpc_srb','fcns')
     fullfile('mpc_srb','fcns','plot')
     fullfile('mpc_srb','fcns_MPC')
