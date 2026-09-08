@@ -26,7 +26,7 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     r_offset = 0.12;    % estensione radiale a riposo (postura di default)
     lc       = 0.054;   % coxa
     lf       = 0.0661;  % femore
-    lt       = 0.12;    % tibia
+    lt       = 0.16;    % tibia
 
     % ---------- 1. Dal frame CORPO al frame ZAMPA: R_z(-alpha) ----------
     % componente radiale (lungo l'asse della zampa)
