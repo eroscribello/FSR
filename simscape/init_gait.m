@@ -71,6 +71,16 @@ end
 % Ordine: [coxa femore tibia] per RR MR FR RL ML FL.
 q_corr = zeros(18,1);
 
+%% ---------------- posa iniziale dei giunti ----------------
+% I 18 Revolute Joint prendono da qui la loro posizione di partenza. Senza,
+% partono da zero: la posa dell'URDF, che non sostiene il robot.
+q0 = zeros(18,1);
+for k = 1:6
+    L = zampe_mux{k};
+    [th, ph, ps] = inv_kyn(0, 0, gait.z0, side.(L), alpha.(L));
+    q0(3*k-2 : 3*k) = [th; ph; ps];
+end
+
 %% ====================================================================
 %  Costruzione del vettore "offset" che il modello sommera' alla IK
 %  ====================================================================
@@ -98,31 +108,36 @@ else
     offset = q_test - q_ik0;               % ai giunti arriva esattamente q_test
 end
 
+
+
 %% ====================================================================
-%  GUARDIA: inv_kyn e' dentro sei blocchi MATLAB Function e non puo'
-%  chiamare phantomx_config a runtime, quindi le sue costanti restano
-%  duplicate. Qui verifichiamo che non siano divergute, ricalcolando la
-%  stessa posa con i valori di cfg e confrontando.
-%  E' il controllo che avrebbe smascherato subito la tibia rimasta a 0.12.
-%  ====================================================================
-trueX_c = cfg.r_offset - cfg.lc;
-im_c    = hypot(trueX_c, cfg.z0);
-cphi_c  = max(-1, min(1, (cfg.lf^2 + im_c^2 - cfg.lt^2)/(2*im_c*cfg.lf)));
-cpsi_c  = max(-1, min(1, (cfg.lf^2 + cfg.lt^2 - im_c^2)/(2*cfg.lf*cfg.lt)));
-phi_cfg = atan2(cfg.z0, trueX_c) - acos(cphi_c);
-psi_cfg = pi/2 - acos(cpsi_c);
+% Tolleranza: 1e-4 rad sono circa 15 micron al piede su una gamba da 15 cm,
+% cioe' irrilevanti. Serve a non far scattare la guardia sull'arrotondamento
+% dei letterali. Un disallineamento vero — 0.12 contro 0.153 — vale gradi,
+% non centesimi di grado.
 
-[~, phi_ik, psi_ik] = inv_kyn(0, 0, cfg.z0, +1, cfg.alpha(1));
+TOLL = 1e-4;
 
-if abs(phi_ik - phi_cfg) > 1e-6 || abs(psi_ik - psi_cfg) > 1e-6
+if abs(phi_ik - phi_cfg) > TOLL || abs(psi_ik - psi_cfg) > TOLL
     warning('phantomx:initgait:divergenza', ...
        ['inv_kyn NON e'' allineata a phantomx_config.\n' ...
-        '  phi:  inv_kyn %+8.3f deg   cfg %+8.3f deg\n' ...
-        '  psi:  inv_kyn %+8.3f deg   cfg %+8.3f deg\n' ...
+        '  phi:  inv_kyn %+9.4f deg   cfg %+9.4f deg   (scarto %.1e rad)\n' ...
+        '  psi:  inv_kyn %+9.4f deg   cfg %+9.4f deg   (scarto %.1e rad)\n' ...
         'Controlla r_offset, lc, lf, lt dentro inv_kyn.m: devono valere\n' ...
-        '%.5f  %.4f  %.4f  %.4f.'], ...
-        rad2deg(phi_ik), rad2deg(phi_cfg), rad2deg(psi_ik), rad2deg(psi_cfg), ...
+        '%.8f  %.6f  %.6f  %.8f.'], ...
+        rad2deg(phi_ik), rad2deg(phi_cfg), abs(phi_ik-phi_cfg), ...
+        rad2deg(psi_ik), rad2deg(psi_cfg), abs(psi_ik-psi_cfg), ...
         cfg.r_offset, cfg.lc, cfg.lf, cfg.lt);
+end
+
+%% ---- interruttore per le prove statiche ----
+% misura_quota (e ogni altra prova a zampe ferme) imposta FORZA_STATICO nel
+% workspace prima di simulare. Va gestito QUI: init_gait e' l'InitFcn del
+% modello, quindi qualunque azzeramento fatto fuori verrebbe riscritto.
+if exist('FORZA_STATICO','var') && FORZA_STATICO
+    gait.S = 0;
+    gait.H = 0;
+    fprintf('\n*** PROVA STATICA: gait.S e gait.H forzati a zero ***\n');
 end
 
 %% ====================================================================

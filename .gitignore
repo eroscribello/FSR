@@ -26,3 +26,12 @@ runs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+slprj/
+*.slxc
+*.slxc.bak
+*_backup_*.slx
+*.asv
+*.autosave
+commit_msg.txt*
+results/

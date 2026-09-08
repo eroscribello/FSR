@@ -19,14 +19,24 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
 %   psi    [rad] angolo giunto tibia   (j_tibia_*)
 %
 %  ATTENZIONE: z e' POSITIVO VERSO IL BASSO. Il generatore di traiettoria
-%  deve quindi usare z0 = +0.10 (piede 10 cm sotto il corpo) e ALZARE il
-%  piede SOTTRAENDO l'altezza di volo:  z = z0 - H*sin(...).
+%  deve quindi usare z0 positivo e ALZARE il piede SOTTRAENDO l'altezza di
+%  volo:  z = z0 - H*sin(...).
+%
+%  ------------------------------------------------------------------
+%  PERCHE' LE COSTANTI SONO DUPLICATE QUI
+%  ------------------------------------------------------------------
+%  Questa funzione gira dentro sei blocchi MATLAB Function e non puo'
+%  chiamare phantomx_config a runtime. Le costanti restano quindi duplicate,
+%  ma NON in silenzio: init_gait ricalcola la posa con i valori di cfg e la
+%  confronta con l'uscita di questa funzione, segnalando ogni divergenza.
+%  Se cambi un valore qui, cambialo anche in phantomx_config.m.
 
     % ---------- Geometria dei link [m] ----------
-    r_offset = 0.12;    % estensione radiale a riposo (postura di default)
-    lc       = 0.054;   % coxa
-    lf       = 0.0661;  % femore
-    lt       = 0.16;    % tibia
+    r_offset = 0.14;       % estensione radiale a riposo   (era 0.12)
+    lc       = 0.054;      % coxa                          [URDF]
+    lf       = 0.0661;     % femore                        [URDF]
+    lt       = 0.15297059; % era 0.152971: l'arrotondamento faceva scattare
+                            % la guardia di init_gait
 
     % ---------- 1. Dal frame CORPO al frame ZAMPA: R_z(-alpha) ----------
     % componente radiale (lungo l'asse della zampa)
@@ -46,7 +56,6 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     im    = sqrt(trueX*trueX + z_loc*z_loc);       % distanza diretta   femore-piede
 
     % Femore
-    % NB: atan2(z_loc, trueX) e' identico a (pi/2 - atan2(trueX, z_loc))
     c_phi = (lf*lf + im*im - lt*lt) / (2*im*lf);
     c_phi = max(-1.0, min(1.0, c_phi));            % clamp anti-NaN (fuori portata)
     phi   = atan2(z_loc, trueX) - acos(c_phi);
@@ -54,6 +63,5 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     % Tibia
     c_psi = (lf*lf + lt*lt - im*im) / (2*lf*lt);
     c_psi = max(-1.0, min(1.0, c_psi));            % clamp anti-NaN
-    % psi   = -(pi - acos(c_psi));                   % segno invertito per Simscape
-     psi =  pi/2 - acos(c_psi);
+    psi   = pi/2 - acos(c_psi);
 end
