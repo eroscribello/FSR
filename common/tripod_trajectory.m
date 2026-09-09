@@ -1,4 +1,4 @@
-function [x, y, z] = tripod_trajectory(t_in, T, S, H, z0)
+function [x, y, z] = tripod_trajectory(t_in, T, S, H, z0, duty)
 %TRIPOD_TRAJECTORY  Traiettoria del piede per un ciclo di andatura a tripode.
 %#codegen
 %
@@ -19,10 +19,6 @@ function [x, y, z] = tripod_trajectory(t_in, T, S, H, z0)
 %  accelerazione diventa un impulso di coppia, cioe' uno scatto.
 %  ------------------------------------------------------------------
 
-    % Frazione del ciclo passata in volo. Con 0.5 il robot sta sempre su
-    % esattamente tre zampe, margine di stabilita' nullo. Con 0.4 il 20%
-    % del ciclo ha tutte e sei le zampe a terra, in due finestre.
-    duty = 0.4;
 
     T_swing  = duty * T;
     T_stance = T - T_swing;

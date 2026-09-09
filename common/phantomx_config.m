@@ -91,7 +91,7 @@ cfg.I_tibia = [2.081e-06, 3.004e-05, 3.050e-05];
 
 %% ===== andatura a tripode =====
 cfg.T           = 1.00;
-cfg.beta_stance = 0.60;
+cfg.beta_stance = 0.50;
 cfg.duty_swing  = 1 - cfg.beta_stance;
 cfg.T_stance    = cfg.beta_stance * cfg.T;
 cfg.T_swing     = cfg.duty_swing  * cfg.T;
@@ -102,10 +102,10 @@ cfg.H           = 0.03;
 cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 
 %% ===== contatto e terreno =====
-cfg.contact.k      = 1e4;
-cfg.contact.c      = 100;
-cfg.contact.w      = 1e-4;
-cfg.contact.vcrit  = 1e-2;
+cfg.contact.k     = 5e3;    % [TARATO] delta statica 1.0 mm con 3 piedi (W/(3k))
+cfg.contact.c     = 100;    % [TARATO] zeta = c/(2*sqrt(k*m/3)) ~ 1.0, critico
+cfg.contact.w     = 1e-3;   % [TARATO] la forza sale su 1 mm, non su 0.1
+cfg.contact.vcrit = 1e-2;   % [TARATO] regolarizzazione attrito, 10 mm/s
 cfg.contact.foot_r = 0.01;
 cfg.mu_plant = 0.9;
 cfg.mu_mpc   = 0.6;

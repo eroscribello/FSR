@@ -37,6 +37,7 @@ gait.T  = cfg.T;      % [s] periodo del ciclo completo
 gait.S  = cfg.S;      % [m] lunghezza del passo
 gait.H  = cfg.H;      % [m] altezza di sollevamento in volo
 gait.z0 = cfg.z0;     % [m] profondita' di appoggio (POSITIVA = verso il basso)
+gait.duty = cfg.duty_swing;
 
 %% ---------------- Geometria di contatto ----------------
 foot_r     = cfg.contact.foot_r;   % [m] raggio sfera del piede
@@ -117,6 +118,15 @@ end
 % non centesimi di grado.
 
 TOLL = 1e-4;
+
+trueX_c = cfg.r_offset - cfg.lc;
+im_c    = hypot(trueX_c, cfg.z0);
+cphi_c  = max(-1, min(1, (cfg.lf^2 + im_c^2 - cfg.lt^2)/(2*im_c*cfg.lf)));
+cpsi_c  = max(-1, min(1, (cfg.lf^2 + cfg.lt^2 - im_c^2)/(2*cfg.lf*cfg.lt)));
+phi_cfg = atan2(cfg.z0, trueX_c) - acos(cphi_c);
+psi_cfg = pi/2 - acos(cpsi_c);
+
+[~, phi_ik, psi_ik] = inv_kyn(0, 0, cfg.z0, +1, cfg.alpha(1));
 
 if abs(phi_ik - phi_cfg) > TOLL || abs(psi_ik - psi_cfg) > TOLL
     warning('phantomx:initgait:divergenza', ...
