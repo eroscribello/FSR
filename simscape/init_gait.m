@@ -140,6 +140,13 @@ if abs(phi_ik - phi_cfg) > TOLL || abs(psi_ik - psi_cfg) > TOLL
         cfg.r_offset, cfg.lc, cfg.lf, cfg.lt);
 end
 
+%% ---- oggetto rigidBodyTree per il blocco Inverse Dynamics ----
+% Lo costruisce Setup_robot_object. La guardia evita di rifare importrobot
+% a ogni simulazione: e' lento.
+if ~exist('robotModel','var')
+    Setup_robot_object;
+end
+
 %% ---- interruttore per le prove statiche ----
 % misura_quota (e ogni altra prova a zampe ferme) imposta FORZA_STATICO nel
 % workspace prima di simulare. Va gestito QUI: init_gait e' l'InitFcn del
@@ -189,7 +196,11 @@ if TARATURA == 0
         fprintf(2,'i piedi partono %.0f mm sopra il pavimento: impatto a %.2f m/s\n', ...
                 caduta, sqrt(2*cfg.g*caduta/1000));
     end
+
+    fprintf('duty (volo) %.2f   -> appoggio %.2f s, volo %.2f s\n', ...
+        gait.duty, (1-gait.duty)*gait.T, gait.duty*gait.T);
     fprintf('\n');
+
 else
     descr = {'giunti tutti a ZERO (posa di riferimento URDF)', ...
              'solo FEMORE RR a -0.5 rad', ...

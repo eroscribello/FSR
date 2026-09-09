@@ -55,6 +55,7 @@ cfg.lt          = cfg.foot_offset;               % tibia vista dall'IK
 % della zona terminale sta a [0.00155, 0.15985, 0.02879] nel frame del link,
 % e l'asse del ginocchio e' x, quindi la lunghezza e' nel piano y-z.
 cfg.lt_mesh = norm([0.15985, 0.02879]);          % [MESH] 0.162422 m
+cfg.contact.foot_r = 0.01;
 
 cfg.reachMax = cfg.lf + cfg.lt;                  % 0.219071 m
 
@@ -80,7 +81,8 @@ end
 %% ===== masse e inerzie =====
 cfg.m_body = 0.975599;
 cfg.m_link = 0.024357719;
-cfg.mass   = cfg.m_body + 24*cfg.m_link;
+cfg.m_foot = 1000 * (4/3)*pi*cfg.contact.foot_r^3;
+cfg.mass   = cfg.m_body + 24*cfg.m_link + 6*cfg.m_foot;
 
 cfg.J       = diag([0.01444, 0.01751, 0.02889]);   % [TARATO] stimata, non misurata
 cfg.I_body  = [3.557e-03, 5.154e-03, 8.565e-03];
@@ -106,7 +108,7 @@ cfg.contact.k     = 5e3;    % [TARATO] delta statica 1.0 mm con 3 piedi (W/(3k))
 cfg.contact.c     = 100;    % [TARATO] zeta = c/(2*sqrt(k*m/3)) ~ 1.0, critico
 cfg.contact.w     = 1e-3;   % [TARATO] la forza sale su 1 mm, non su 0.1
 cfg.contact.vcrit = 1e-2;   % [TARATO] regolarizzazione attrito, 10 mm/s
-cfg.contact.foot_r = 0.01;
+
 cfg.mu_plant = 0.9;
 cfg.mu_mpc   = 0.6;
 
@@ -167,8 +169,8 @@ assert(cfg.mu_mpc <= cfg.mu_plant, 'phantomx:config:mu', ...
 assert(abs(cfg.S - cfg.v_nom*cfg.T_stance) < 1e-12, 'phantomx:config:passo', ...
     'S deve valere v_nom*T_stance, altrimenti il piede striscia in appoggio.');
 
-assert(abs(cfg.mass - 1.560184) < 1e-5, 'phantomx:config:massa', ...
-    'La massa totale non torna con m_body + 24*m_link.');
+assert(abs(cfg.mass - 1.585317) < 1e-5, 'phantomx:config:massa', ...
+    'La massa non torna con m_body + 24*m_link + 6*m_foot.');
 
 %% ===== riepilogo =====
 if verbose
