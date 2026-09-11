@@ -35,8 +35,7 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     r_offset = 0.14;       % estensione radiale a riposo   (era 0.12)
     lc       = 0.054;      % coxa                          [URDF]
     lf       = 0.0661;     % femore                        [URDF]
-    lt       = 0.15; % era 0.152971: l'arrotondamento faceva scattare
-                            % la guardia di init_gait
+    lt = 0.152971;         % norm([0.03 0.15]): i sei Rigid Transform del modello                            % la guardia di init_gait
 
     % ---------- 1. Dal frame CORPO al frame ZAMPA: R_z(-alpha) ----------
     % componente radiale (lungo l'asse della zampa)

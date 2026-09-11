@@ -34,9 +34,22 @@ cfg.g = 9.81;
 
 %% ===== ordine delle zampe =====
 cfg.legNamesCAN = {'FL','FR','ML','MR','RL','RR'};
+
+% Mux di INGRESSO: porta gli angoli ai giunti. Verificato sul Mux8, e
+% confermato dal fatto che il robot cammina dritto alla velocita' attesa.
 cfg.legNamesMUX = {'RR','MR','FR','RL','ML','FL'};
 cfg.mux2can = [6 4 2 5 3 1];
 cfg.can2mux = [6 3 5 2 4 1];
+
+% Mux di USCITA: Fleg e torque_sens. ORDINE DIVERSO da quello di ingresso,
+% letto dal cablaggio dei due blocchi: lf lm lr rf rm rr.
+% Non e' un refuso: nello stesso modello convivono due convenzioni. Se ne
+% e' accorto solo lo scivolamento, perche' e' l'unica metrica per zampa:
+% tutte le metriche di coppia sono aggregate e quindi invarianti all'ordine.
+cfg.legNamesOUT = {'FL','ML','RL','FR','MR','RR'};
+cfg.out2can = [1 3 5 2 4 6];
+cfg.can2out = [1 4 2 5 3 6];
+
 cfg.jointIndex = @(i,j) 3*(cfg.can2mux(i)-1) + j;
 
 %% ===== geometria della gamba =====
@@ -69,12 +82,12 @@ cfg.alpha = deg2rad([45, -45, 90, -90, 135, -135]);   % [URDF] yaw di j_c1_* men
 cfg.side  = [ +1, -1, +1, -1, +1, -1 ];
 
 %% ===== posa nominale =====
-cfg.r_offset = 0.14;   % [TARATO] estensione radiale del piede dall'asse coxa
-cfg.z0       = 0.14;   % [TARATO] profondita' d'appoggio sotto l'anca
-cfg.z0_eff = 0.150791;     % [MISURATO] profondita' effettivamente raggiunta.
-                           % L'IK ha un errore costante di 10.8 mm, verificato
-                           % costante entro 0.02 mm su tutto il passo: non
-                           % rompe la complanarita', ma sposta la quota del corpo.
+cfg.r_offset = 0.14;    % [TARATO] estensione radiale del piede dall'asse coxa
+cfg.z0       = 0.14;    % [TARATO] profondita' d'appoggio sotto l'anca
+cfg.z0_eff = 0.147344;  % [MISURATO] dall'equilibrio statico del modello:
+                        % 0.155710 - foot_r + p_hip(3) + mg/(6k).
+                        % NON dalla media di verifica_ik: quella usa una
+                        % ricostruzione del frame URDF accurata a ~4 mm.                        % sotto l'anca, da verifica_ik con lt = 0.152971
 
 cfg.pf_nom = zeros(3,6);
 for i = 1:6
@@ -108,9 +121,23 @@ cfg.H           = 0.03;
 cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 
 %% ===== contatto e terreno =====
-cfg.contact.k     = 5e3;    % [TARATO] delta statica 1.0 mm con 3 piedi (W/(3k))
-cfg.contact.c     = 100;    % [TARATO] zeta = c/(2*sqrt(k*m/3)) ~ 1.0, critico
-cfg.contact.w     = 1e-3;   % [TARATO] la forza sale su 1 mm, non su 0.1
+% [TARATO] La rigidezza non e' una misura: e' un'assunzione sul terreno.
+% Criterio: la penetrazione disponibile deve essere confrontabile con gli
+% errori di assetto del corpo, altrimenti il modello di contatto diventa il
+% fattore dominante del risultato invece del controllore.
+%   k = 5000 -> penetrazione in tripode 1.04 mm, contro 3.29 mm di dislivello
+%               ai piedi prodotto dall'inclinazione del corpo (media su 10 s,
+%               picco 6.28). Due terzi dei piedi non potevano toccare: il
+%               robot camminava a una zampa alla volta, 1.70 piedi a terra,
+%               5% di tripode, 9-10 N per zampa invece di 5.18.
+%   k = 1200 -> penetrazione 4.3 mm: 2.97 piedi a terra, 95% di tripode,
+%               5.0-5.5 N per zampa.
+% Lo stesso k vale per C1, C2 e C3: il confronto fra controllori non e'
+% alterato da una proprieta' del terreno uguale per tutti.
+
+cfg.contact.k = 1200;    % penetrazione statica 2.2 mm, in tripode 4.3 mm
+cfg.contact.c = 50;      % 2*sqrt(k*mass/3)
+cfg.contact.w = 2e-3;    % la forza sale su 2 mm invece di 1
 cfg.contact.vcrit = 1e-2;   % [TARATO] regolarizzazione attrito, 10 mm/s
 
 cfg.mu_plant = 0.9;
@@ -177,6 +204,11 @@ assert(abs(cfg.S - cfg.v_nom*cfg.T_stance) < 1e-12, 'phantomx:config:passo', ...
 
 assert(abs(cfg.mass - 1.585317) < 1e-5, 'phantomx:config:massa', ...
     'La massa non torna con m_body + 24*m_link + 6*m_foot.');
+
+assert(cfg.mass*cfg.g/(3*cfg.contact.k) > 2e-3, 'phantomx:config:contatto', ...
+    ['Penetrazione in tripode %.2f mm: troppo poco per assorbire gli errori\n' ...
+     'di assetto del corpo (misurati ~3.3 mm). Sotto i 2 mm il robot torna a\n' ...
+     'camminare a una zampa alla volta.'], 1000*cfg.mass*cfg.g/(3*cfg.contact.k));
 
 %% ===== riepilogo =====
 if verbose

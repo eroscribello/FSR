@@ -145,13 +145,19 @@ if z_osc > 2e-3
 end
 
 fprintf('\n--- CONFRONTO CON IL CALCOLO ---\n');
-z_calc  = cfg.body_z0_geom;                          % formula geometrica di cfg
-pen     = cfg.mass*cfg.g / cfg.contact.k;            % compenetrazione elastica
-z_atteso = z_calc + pen;
+% Nella prova statica tutte e sei le zampe sono a terra e si dividono il
+% carico, quindi ciascuna affonda di mg/(6k), non di mg/k. E sotto carico il
+% corpo SCENDE: l'equilibrio sta sotto la quota geometrica, non sopra.
+% La versione precedente sbagliava entrambe le cose, e i due errori si
+% compensavano finche' una zampa sola portava tutto il peso.
+n_app   = 6;
+z_calc  = cfg.body_z0_geom;
+pen     = cfg.mass*cfg.g / (n_app*cfg.contact.k);
+z_atteso = z_calc - pen;
 residuo  = z_eq - z_atteso;
 
 fprintf('  geometrica (cfg.body_z0_geom)   %.6f m\n', z_calc);
-fprintf('  + compenetrazione mg/k          %.6f m   (%.2f mm)\n', pen, 1000*pen);
+fprintf('  - compenetrazione mg/(6k)       %.6f m   (%.2f mm)\n', pen, 1000*pen);
 fprintf('  --------------------------------------------\n');
 fprintf('  equilibrio atteso               %.6f m\n', z_atteso);
 fprintf('  equilibrio misurato             %.6f m\n', z_eq);

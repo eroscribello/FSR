@@ -125,7 +125,7 @@ im_c    = hypot(trueX_c, cfg.z0);
 cphi_c  = max(-1, min(1, (cfg.lf^2 + im_c^2 - cfg.lt^2)/(2*im_c*cfg.lf)));
 cpsi_c  = max(-1, min(1, (cfg.lf^2 + cfg.lt^2 - im_c^2)/(2*cfg.lf*cfg.lt)));
 phi_cfg = atan2(cfg.z0, trueX_c) - acos(cphi_c);
-psi_cfg = pi/2 - acos(cpsi_c);
+psi_cfg = -(pi/2 - acos(cpsi_c));
 
 [~, phi_ik, psi_ik] = inv_kyn(0, 0, cfg.z0, +1, cfg.alpha(1));
 
