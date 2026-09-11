@@ -71,6 +71,10 @@ cfg.side  = [ +1, -1, +1, -1, +1, -1 ];
 %% ===== posa nominale =====
 cfg.r_offset = 0.14;   % [TARATO] estensione radiale del piede dall'asse coxa
 cfg.z0       = 0.14;   % [TARATO] profondita' d'appoggio sotto l'anca
+cfg.z0_eff = 0.150791;     % [MISURATO] profondita' effettivamente raggiunta.
+                           % L'IK ha un errore costante di 10.8 mm, verificato
+                           % costante entro 0.02 mm su tutto il passo: non
+                           % rompe la complanarita', ma sposta la quota del corpo.
 
 cfg.pf_nom = zeros(3,6);
 for i = 1:6
@@ -116,8 +120,10 @@ cfg.floor_dim = [4 4 0.05];
 cfg.floor_off = [0 0 +cfg.floor_dim(3)/2];
 cfg.floor_top = -cfg.floor_off(3) + cfg.floor_dim(3)/2;
 
-cfg.body_z0_geom = cfg.z0 + cfg.contact.foot_r + cfg.floor_top - cfg.p_hip(3,1);
-cfg.body_z0      = cfg.body_z0_geom + 0.002;   % 2 mm: nasce appena sopra
+cfg.body_z0_geom = cfg.z0_eff + cfg.contact.foot_r + cfg.floor_top - cfg.p_hip(3,1);
+cfg.body_z0 = cfg.body_z0_geom - cfg.mass*cfg.g/(6*cfg.contact.k);
+% cfg.body_z0 = cfg.body_z0_geom + 0.002;          % 0.148366
+
 
 %% ===== attuatori =====
 cfg.tau_max = 1.5;          % [DATASHEET] l'URDF dichiara 2.8: ottimistico

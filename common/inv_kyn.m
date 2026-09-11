@@ -35,7 +35,7 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     r_offset = 0.14;       % estensione radiale a riposo   (era 0.12)
     lc       = 0.054;      % coxa                          [URDF]
     lf       = 0.0661;     % femore                        [URDF]
-    lt       = 0.15297059; % era 0.152971: l'arrotondamento faceva scattare
+    lt       = 0.15; % era 0.152971: l'arrotondamento faceva scattare
                             % la guardia di init_gait
 
     % ---------- 1. Dal frame CORPO al frame ZAMPA: R_z(-alpha) ----------
@@ -63,5 +63,5 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     % Tibia
     c_psi = (lf*lf + lt*lt - im*im) / (2*lf*lt);
     c_psi = max(-1.0, min(1.0, c_psi));            % clamp anti-NaN
-    psi   = pi/2 - acos(c_psi);
+    psi   = -(pi/2 - acos(c_psi));
 end

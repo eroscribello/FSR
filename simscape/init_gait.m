@@ -45,6 +45,7 @@ tibia_len  = cfg.foot_offset;      % [m] traslazione sfera in punta alla tibia
 floor_dim  = cfg.floor_dim;        % [m] dimensioni del Brick Solid pavimento
 floor_off  = cfg.floor_off;        % faccia superiore del pavimento a z = 0
 body_z0    = cfg.body_z0;          % [m] quota iniziale del corpo (6-DOF Joint)
+foot_xyz = cfg.foot_xyz;
 
 %% ---------------- Parametri del contatto ----------------
 contact_k     = cfg.contact.k;       % [N/m]      rigidezza normale
