@@ -50,7 +50,10 @@ cfg.legNamesOUT = {'FL','ML','RL','FR','MR','RR'};
 cfg.out2can = [1 3 5 2 4 6];
 cfg.can2out = [1 4 2 5 3 6];
 
-cfg.jointIndex = @(i,j) 3*(cfg.can2mux(i)-1) + j;
+%cfg.jointIndex = @(i,j) 3*(cfg.can2mux(i)-1) + j;
+
+cfg.jointIN  = @(i,j) 3*(cfg.can2mux(i)-1) + j;   % vettore verso i giunti (Mux ingresso)
+cfg.jointOUT = @(i,j) 3*(cfg.can2out(i)-1) + j;   % vettori dai To Workspace (Mux uscita)
 
 %% ===== geometria della gamba =====
 cfg.lc = 0.054;    % [URDF] coxa,   da j_c2_* xyz = [0 -0.054 0]
