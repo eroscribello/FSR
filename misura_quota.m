@@ -201,7 +201,7 @@ end
 end
 
 function chiudi(mdl, logPrima)
-try, set_param(mdl,'SimscapeLogType',logPrima); catch, end
+try set_param(mdl,'SimscapeLogType',logPrima); catch, end
 try
     evalin('base','gait = gait_backup; body_z0 = bz0_backup;');
     evalin('base','clear gait_backup bz0_backup FORZA_STATICO');

@@ -37,8 +37,7 @@ if nargin < 2 || isempty(cfg), cfg = phantomx_config(); end
 if nargin < 3, opt = struct(); end
 
 def = struct('t_regime',1.0, 'soglia_rib',deg2rad(30), ...
-             'soglia_fermo',0.02, 'soglia_Fz',0.5);
-f = fieldnames(def);
+             'soglia_fermo',0.02, 'soglia_Fz',0.5, 'frac_min',0.5);f = fieldnames(def);
 for k = 1:numel(f)
     if ~isfield(opt,f{k}), opt.(f{k}) = def.(f{k}); end
 end
@@ -110,13 +109,24 @@ A.vel_media       = A.distanza_regime / (t(end) - t(i0));
 % durante l'avvio. Sull'SRB vale ~12 mm ed e' indipendente dalla durata.
 A.perdita_avvio   = norm(vel_d) * (t(i0) - t(1)) - norm(run.p(i0,1:2) - run.p(1,1:2));
 
-ribaltato = any(abs(run.rpy(:,1)) > opt.soglia_rib) || ...
-            any(abs(run.rpy(:,2)) > opt.soglia_rib);
-fermo     = A.distanza < opt.soglia_fermo;
-A.successo = ~(ribaltato || fermo);
+% L'avanzamento va misurato lungo la direzione COMANDATA e CON SEGNO: la
+% norma non distingue avanti da indietro, e a 2x il robot cammina
+% all'indietro risultando comunque al 18% del task invece che a -18%.
+dirc          = vel_d(:) / max(norm(vel_d), eps);
+A.avanzamento = (run.p(end,1:2) - run.p(1,1:2)) * dirc(1:2);
+att_tot       = norm(vel_d) * (t(end) - t(1));
+A.frazione_task = A.avanzamento / max(att_tot, eps);
+
+ribaltato     = any(abs(run.rpy(:,1)) > opt.soglia_rib) || ...
+                any(abs(run.rpy(:,2)) > opt.soglia_rib);
+fermo         = A.distanza < opt.soglia_fermo;
+insufficiente = att_tot > 0 && A.avanzamento < opt.frac_min * att_tot;
+
+A.successo = ~(ribaltato || fermo || insufficiente);
 A.causa_fallimento = "";
-if ribaltato, A.causa_fallimento = "ribaltamento"; end
-if fermo,     A.causa_fallimento = "fermo"; end
+if insufficiente, A.causa_fallimento = "avanzamento insufficiente"; end
+if fermo,         A.causa_fallimento = "fermo"; end          % piu' grave
+if ribaltato,     A.causa_fallimento = "ribaltamento"; end   % il piu' grave
 
 %% ---------- B. planarita' del corpo ----------
 B.roll_rms   = rms_(run.rpy(sel,1));
@@ -152,7 +162,7 @@ end
 
 %% ---------- D. qualita' del contatto ----------
 D = struct('slip_tot',NaN, 'slip_per_passo',NaN, 'distacchi',NaN, ...
-           'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN);
+           'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN, 'disp_carico',NaN);
 inContatto = [];
 if ha('contact')
     inContatto = logical(run.contact);
@@ -204,6 +214,13 @@ elseif ~isempty(inContatto)
     attese = (t(end)-t(1)) / cfg.T;
     D.distacchi = sum(max(0, trans - ceil(attese)));
 end
+
+% Dispersione del carico fra le zampe. La complanarita' cinematica non
+% garantisce quella di carico: a 1x le sei zampe stanno entro il 7%, a 0.5x
+% arrivano al 17% perche' il corpo si assesta dentro la cedevolezza del
+% contatto trovando un equilibrio asimmetrico.
+Fm = mean(run.Fc(sel, 3:3:18), 1);
+D.disp_carico = std(Fm) / max(mean(Fm), eps);
 
 %% ---------- riga di tabella ----------
 meta = struct('controller','', 'task','', 'run',1, 'seed',NaN, ...

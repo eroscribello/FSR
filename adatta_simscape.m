@@ -283,10 +283,32 @@ end
 %% ==================== contatto schedulato ====================
 sched = [];
 if ~isempty(inContatto)
-    [sched, accordo] = schedula(t, cfg, inContatto);
+    % L'andatura effettiva puo' differire da cfg: la campagna T2 cambia il
+    % periodo con OVERRIDE_GAIT e init_gait lascia il valore vero in gait.
+    % Usare cfg.T qui produceva uno schedule sfasato e quindi distacchi e
+    % frazione_persa senza significato in tutte le celle diverse da 1x.
+    andatura = struct('T', cfg.T, 'beta_stance', cfg.beta_stance, 'phase', cfg.phase);
+    if evalin('base','exist(''gait'',''var'')')
+        g = evalin('base','gait');
+        if isfield(g,'T') && ~isempty(g.T),    andatura.T = g.T; end
+        if isfield(g,'duty') && ~isempty(g.duty), andatura.beta_stance = 1 - g.duty; end
+    end
+    if abs(andatura.T - cfg.T) > 1e-9
+        note{end+1} = sprintf('andatura a T = %.3f s invece di cfg.T = %.3f s', ...
+                              andatura.T, cfg.T);
+    end
+    [sched, accordo, sfas] = schedula(t, andatura, inContatto);
+    if opt.verbose
+        fprintf('  schedule di contatto: accordo %.0f%% (sfasamento %.2f del ciclo)\n', ...
+                100*accordo, sfas);
+    end
     if accordo < 0.7
         note{end+1} = sprintf('contact_sched concorda col contatto reale solo al %.0f%%', 100*accordo);
-        fprintf(2,'[adatta_simscape] %s: i distacchi vanno letti con prudenza.\n', note{end});
+        fprintf(2,['[adatta_simscape] %s.\n' ...
+                   '    Lo sfasamento e'' gia'' ottimizzato, quindi non e'' un disallineamento\n' ...
+                   '    di calcolo: il robot non sta seguendo lo schedule comandato.\n' ...
+                   '    distacchi e frazione_persa vanno letti come sintomo, non come misura.\n'], ...
+                   note{end});
     end
 end
 
@@ -618,18 +640,35 @@ end
 %% ================================================================
 %  ANDATURA E CINEMATICA
 %% ================================================================
-function [sched, accordo] = schedula(t, cfg, reale)
-%SCHEDULA  Appoggio previsto dal ciclo di andatura, con verifica sul reale.
-%   La fase di partenza del ciclo non e' documentata: si provano le due
-%   convenzioni (appoggio all'inizio della fase, oppure volo) e si tiene
-%   quella che concorda di piu' con il contatto misurato.
-u = mod(t/cfg.T - cfg.phase(:).', 1);        % fase di ogni zampa, N x 6
-ip1 = u <  cfg.beta_stance;                  % appoggio per primo
-ip2 = u >= cfg.duty_swing;                   % volo per primo
-a1 = mean(ip1(:) == reale(:));
-a2 = mean(ip2(:) == reale(:));
-if a1 >= a2, sched = ip1;  accordo = a1;
-else,        sched = ip2;  accordo = a2;  end
+function [sched, accordo, sfas] = schedula(t, and, reale)
+%SCHEDULA  Appoggio previsto dal ciclo di andatura, allineato sul reale.
+%
+%   'and' porta T, beta_stance e phase EFFETTIVI della run, non quelli di
+%   cfg: con OVERRIDE_GAIT i due possono differire.
+%
+%   L'istante in cui comincia il ciclo rispetto a t = 0 non e' documentato,
+%   e la versione precedente provava solo due ipotesi (appoggio per primo,
+%   volo per primo). Non basta: lo sfasamento reale puo' essere qualunque.
+%   Qui si cerca sulla griglia lo sfasamento che massimizza l'accordo.
+%
+%   ATTENZIONE: si cerca SOLO lo sfasamento, che e' un'incognita di
+%   allineamento. T e beta_stance restano quelli NOMINALI, perche'
+%   contact_sched deve dire cosa il controllore ha COMANDATO. Adattando
+%   anche il duty, frazione_persa verrebbe azzerata per costruzione e la
+%   metrica non misurerebbe piu' nulla.
+%
+%   Se anche con il miglior allineamento l'accordo resta basso, allora non
+%   e' un problema di calcolo: e' il robot che non sta seguendo il comando.
+ns    = 200;
+prove = linspace(0, 1, ns+1);  prove(end) = [];
+best  = -inf;  sched = [];  sfas = 0;
+for s = prove
+    u  = mod(t/and.T - and.phase(:).' - s, 1);   % fase di ogni zampa, N x 6
+    ip = u < and.beta_stance;                    % appoggio nella prima parte
+    a  = mean(ip(:) == reale(:));
+    if a > best, best = a;  sched = ip;  sfas = s; end
+end
+accordo = best;
 end
 
 function pf = piedi(rbt, q, p, rpy, cfg)

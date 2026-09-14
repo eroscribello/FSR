@@ -13,6 +13,7 @@ backup_phantomx_*.zip     # backup creati da pulizia.m
 *_backup_*.slx            # backup creati da fix_mesh_paths
 *_pre_pulizia*.slx
 *_dup_*.*
+phantomx_piano_locale.slx
 
 # --- output delle simulazioni ---
 # I risultati della campagna di misura si rigenerano: non vanno in git.

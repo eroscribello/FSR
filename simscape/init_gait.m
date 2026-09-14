@@ -158,6 +158,18 @@ if exist('FORZA_STATICO','var') && FORZA_STATICO
     fprintf('\n*** PROVA STATICA: gait.S e gait.H forzati a zero ***\n');
 end
 
+%% ---- override per la campagna ----
+% init_gait e' l'InitFcn del modello: qualunque assegnazione fatta a mano nel
+% workspace prima di sim verrebbe riscritta qui. L'override deve passare da
+% questa variabile.
+if exist('OVERRIDE_GAIT','var') && isstruct(OVERRIDE_GAIT)
+    ovNomi = fieldnames(OVERRIDE_GAIT);
+    for ovI = 1:numel(ovNomi)
+        gait.(ovNomi{ovI}) = OVERRIDE_GAIT.(ovNomi{ovI});
+        fprintf('  [override] gait.%s = %g\n', ovNomi{ovI}, OVERRIDE_GAIT.(ovNomi{ovI}));
+    end
+    clear ovNomi ovI
+end
 %% ====================================================================
 %  Stampa di controllo
 %  ====================================================================
