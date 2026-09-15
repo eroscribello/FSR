@@ -119,7 +119,7 @@ cfg.T_stance    = cfg.beta_stance * cfg.T;
 cfg.T_swing     = cfg.duty_swing  * cfg.T;
 cfg.S           = 0.06;
 cfg.v_nom       = cfg.S / cfg.T_stance;
-cfg.H           = 0.03;
+cfg.H           = 0.05;
 
 cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 
