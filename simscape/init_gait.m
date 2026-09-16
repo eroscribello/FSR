@@ -170,6 +170,14 @@ if exist('OVERRIDE_GAIT','var') && isstruct(OVERRIDE_GAIT)
     end
     clear ovNomi ovI
 end
+
+%% ---- controllo switch ----
+if cfg.c2.attiva
+    c2_soglia = cfg.c2.soglia_tau;
+else
+    c2_soglia = inf;
+end
+
 %% ====================================================================
 %  Stampa di controllo
 %  ====================================================================

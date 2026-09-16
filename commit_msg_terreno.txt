@@ -1,0 +1,91 @@
+feat(terreno): scenari di simulazione da script, e la mappa dei contatti che era sbagliata
+
+Il terreno di ogni task si sceglie ora con una chiamata prima di simulare:
+
+    init_gait
+    applica_terreno('T5')
+    out = sim('phantomx_sim_zero','StopTime','10');
+
+La funzione commenta e scommenta solidi e contatti con set_param e NON salva
+il modello: il .slx sul disco resta identico, quindi si puo' lavorare in due
+senza passarsi il file. T1, T5 e T6 verificati.
+
+LA MAPPA DEI CONTATTI NON ERA QUELLA CHE SEMBRAVA
+La prima versione dava per scontato che Spatial Contact Force(k+1) fosse il
+contatto di File Solid k. Falso su cinque slot su sette: la numerazione dei
+blocchi non segue quella delle etichette.
+
+    File Solid1  'ostacolo'   -> Force6   (non Force2)
+    File Solid2  'ostacolo2'  -> Force2   (non Force3)
+    File Solid3  'ostacolo3'  -> Force3
+    File Solid4  'ostacolo4'  -> Force4
+    File Solid5  'ostacolo5'  -> Force5
+    File Solid6  'ostacolo6'  -> Force7
+    File Solid7  'ostacolo7'  -> Force8
+    Brick Solid3 'pavimento'  -> Force1
+
+T6 non poteva accorgersene: accende tutti e sette gli ostacoli insieme e
+qualunque permutazione funziona. T5 ne accende uno solo, spegneva la
+geometria di Force2 e il modello non compilava - l'unico task rotto, e il
+motivo per cui e' rimasto rotto due giorni.
+
+Adesso la corrispondenza etichetta -> blocco di contatto viene LETTA dal
+modello a ogni chiamata, piede per piede, seguendo il percorso vero della
+geometria:
+
+    Spatial Contact Force, porta B -> Connection Port n del piede
+    -> porta n del Subsystem al livello di sopra -> Connection Label
+    -> etichetta -> solido
+
+L'offasamento fra la numerazione interna delle Connection Port (1..9, con la
+1 sul nodo condiviso della sfera) e le porte del livello di sopra (LConn1..8)
+si ricava dai dati e viene verificato: se le porte non coprono esattamente le
+otto etichette, la funzione si ferma invece di simulare un modello sbagliato.
+Se il cablaggio cambia, il codice non va aggiornato.
+
+DUE TRAPPOLE DI find_system, TUTTE E DUE COSTATE UN GIRO A VUOTO
+- find_system ESCLUDE I BLOCCHI COMMENTATI. La mappa va letta proprio quando
+  quasi tutti i contatti sono spenti da una chiamata precedente: ne tornavano
+  due su otto. Serve 'IncludeCommented','on'.
+- Il filtro per nome non vede i nomi con l'a capo dentro ('Spatial
+  Contact\nForce3'), mentre get_param l'a capo lo normalizza da solo quando
+  risolve un percorso. Ora il filtro si fa a mano sui nomi normalizzati.
+
+LE TRASFORMAZIONI NON SI COMMENTANO MAI
+I Rigid Transform del terreno fanno parte della catena che ancora il ramo al
+World, non del singolo elemento: commentarne uno stacca tutto quello che
+pende da li' e il pavimento cade come corpo libero, trascinando giu' il
+robot. Misurato: T1 con Rigid Transform9 attivo cammina, lo stesso blocco
+commentato fa cadere tutto. Si commentano solo solidi e contatti. La funzione
+li riattiva tutti a ogni chiamata, perche' una prova precedente puo' averne
+lasciato qualcuno spento.
+
+QUOTA DEGLI OSTACOLI (nuovo: quota_terreno.m)
+Le mesh degli ostacoli sono state posate contro il Cube del terreno
+imperfetto, la cui superficie sta 25 mm sopra quella del Brick liscio:
+
+    Brick liscio   spessore 0.05 centrato a 0.025   ->  z = 0.050
+    Cube           mesh +-0.05 centrata a 0.025     ->  z = 0.075
+
+Su pavimento liscio galleggiavano percio' di 25 mm. Ora i loro Rigid
+Transform ricevono cfg.terreno.ost_dz quando il pavimento e' liscio, zero
+altrimenti. Il segno e' POSITIVO: la z di quel Rigid Transform e' opposta a
+quella del mondo, con -0.025 l'ostacolo sale di altri 25 mm. Verificato in
+simulazione, non dedotto.
+
+quota_terreno legge gli STL e riporta la quota delle due superfici e la base
+di ogni ostacolo. Ne esce anche che ost4..ost7 poggiano sui RILIEVI del
+terreno imperfetto (da +35 a +71 mm): su pavimento liscio restano in aria
+comunque, quindi in T5 sono utilizzabili solo ost1..ost3.
+
+T4 E' L'UNICO ANCORA APERTO
+Il cablaggio della rampa e' risolto - prende in prestito lo slot 'ostacolo7',
+perche' nei piedi nessun contatto cerca l'etichetta 'rampa' e non le si puo'
+dare 'pavimento' (Simscape ammette una sola geometria per linea). Resta
+sbagliata la geometria: il Brick della rampa e' 4x4 m e a 8 gradi compenetra
+il pavimento. Va ridimensionato e riposizionato, non ricablato.
+
+NUOVI FILE
+- applica_terreno.m   sceglie il terreno di un task senza toccare il .slx
+- quota_terreno.m     quote delle superfici e basi degli ostacoli dagli STL
+- mappa_contatti.m    diagnostica: chi cerca quale etichetta e chi la fornisce

@@ -154,6 +154,32 @@ cfg.body_z0_geom = cfg.z0_eff + cfg.contact.foot_r + cfg.floor_top - cfg.p_hip(3
 cfg.body_z0 = cfg.body_z0_geom - cfg.mass*cfg.g/(6*cfg.contact.k);
 % cfg.body_z0 = cfg.body_z0_geom + 0.002;          % 0.148366
 
+% Rampa di T4. Nel modello sta a x = -2.5, cioe' dietro al robot che avanza
+% verso +x: qui viene riposizionata davanti, a meta' del percorso tipico
+% (il robot fa circa 1.4 m in 10 s).
+cfg.terreno.rampa_pos   = [0.6, 0, -0.5];   % [m]
+cfg.terreno.rampa_gradi = 8;               % inclinazione attorno a +Y
+
+%% ===== terreno per task =====
+% I sette Rigid Transform degli ostacoli leggono terreno.off(:,k): quale
+% ostacolo e' presente si sceglie da script con applica_terreno, senza mai
+% modificare il .slx. Un ostacolo "spento" viene parcheggiato sotto il
+% pavimento, dove non incontra mai un piede.
+cfg.terreno.n_prop   = 7;
+% [MISURATO] Positivo = verso il basso: i Rigid Transform del pavimento e
+% degli ostacoli hanno l'asse z opposto a quello del mondo, come gia' visto
+% su floor_off. Con -5 gli ostacoli finiscono in aria sopra il robot.
+cfg.terreno.z_spento = +5;        % [m] quota di parcheggio
+cfg.terreno.ost_dz = 0.025;   % [m] gli ostacoli sono posati sul Cube, la cui
+                              % superficie sta 25 mm sopra il pavimento liscio.
+                              % Segno positivo: la z di quel Rigid Transform e'
+                              % opposta a quella del mondo (verificato).cfg.terreno.task.T1 = [];         % piano
+cfg.terreno.task.T2 = [];         % piano, tre velocita'
+cfg.terreno.task.T3 = [];         % piano, traiettoria curva
+cfg.terreno.task.T4 = [];         % rampa - DA DEFINIRE con il collega
+cfg.terreno.task.T5 = 1;          % ostacolo singolo
+cfg.terreno.task.T6 = 1:7;        % ostacoli multipli
+cfg.terreno.task.T7 = [];         % piano, disturbo impulsivo
 
 %% ===== attuatori =====
 cfg.tau_max = 1.5;          % [DATASHEET] l'URDF dichiara 2.8: ottimistico
@@ -168,6 +194,12 @@ cfg.dist.dir   = [0; 1; 0];
 cfg.dist.frac  = 0.25;
 cfg.dist.point = [0; 0; 0];
 cfg.dist.F     = cfg.dist.frac * cfg.mass * cfg.g;
+
+
+
+%% ===== switch C1 / C2 =====
+cfg.c2.attiva     = true;    % false = C1 (anello aperto)
+cfg.c2.soglia_tau = 0.5;     % [N*m]
 
 %% ===== controlli di coerenza =====
 % Estensione della gamba nel caso PEGGIORE del ciclo, non nella posa ferma.
