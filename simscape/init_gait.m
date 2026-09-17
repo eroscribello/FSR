@@ -171,11 +171,42 @@ if exist('OVERRIDE_GAIT','var') && isstruct(OVERRIDE_GAIT)
     clear ovNomi ovI
 end
 
-%% ---- controllo switch ----
+%% ---- interruttore C1 / C2 ----
+% Un runner puo' scegliere il controllore senza editare phantomx_config:
+%     OVERRIDE_C2 = false;   init_gait;   sim(...)
+% Come FORZA_STATICO e OVERRIDE_GAIT, va gestito QUI: init_gait e' l'InitFcn,
+% quindi cfg viene ricostruita a ogni sim e un'assegnazione fatta fuori
+% sarebbe riscritta.
+if exist('OVERRIDE_C2','var') && ~isempty(OVERRIDE_C2)
+    cfg.c2.attiva = logical(OVERRIDE_C2);
+    fprintf('  [override] cfg.c2.attiva = %d\n', cfg.c2.attiva);
+end
+
 if cfg.c2.attiva
     c2_soglia = cfg.c2.soglia_tau;
 else
-    c2_soglia = inf;
+    c2_soglia = inf;         % il flag di contatto non scatta mai
+end
+
+% ATTENZIONE, ED E' STATO UN ERRORE NOSTRO: c2_soglia = inf NON basta per
+% avere l'anello aperto. Con il flag di contatto sempre falso, la ricerca del
+% terreno entra nel suo ramo di DISCESA a ogni fase di appoggio e la zampa
+% scende di z_ext_max a v_search. L'interruttore vero e' c2_par(1), letto dai
+% due blocchi MATLAB Function tramite ricerca_terreno.
+c2_par = [double(cfg.c2.attiva), ...
+          cfg.c2.z_nom, ...
+          cfg.c2.v_search, ...
+          cfg.c2.z_ext_max, ...
+          cfg.c2.t_reset, ...
+          cfg.c2.tol];
+
+% La soglia di ricerca va confrontata con la profondita' EFFETTIVA comandata:
+% se si ritara gait.z0 (campagna T2) senza aggiornare z_nom, la condizione
+% z >= z_nom - tol cambia significato in silenzio.
+if cfg.c2.attiva && abs(c2_par(2) - gait.z0) > cfg.c2.tol
+    fprintf(2, ['  [c2] z_nom = %.4f ma gait.z0 = %.4f: la soglia di ricerca\n' ...
+                '       non e'' allineata alla profondita'' comandata.\n'], ...
+            c2_par(2), gait.z0);
 end
 
 %% ====================================================================

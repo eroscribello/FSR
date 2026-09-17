@@ -25,7 +25,16 @@ function run = run_vuoto(N)
 %   tau      [N x 18]  coppie di giunto [N*m]
 %   pf       [N x 18]  posizioni dei piedi nel frame mondo [m], 6 x (x,y,z)
 %   Fc       [N x 18]  forze di contatto nel frame mondo [N], 6 x (x,y,z)
-%   contact  [N x 6]   logico: true se la zampa e' in appoggio
+%   contact  [N x 6]   logico: true se la zampa e' in appoggio DAVVERO
+%                      (misurato: forza trasmessa o flag del contatto)
+%   contact_sched
+%            [N x 6]   logico: true se la zampa DOVREBBE essere in appoggio
+%                      secondo il ciclo di andatura nominale.
+%                      Serve a distinguere i due casi: una zampa schedulata a
+%                      terra che non trasmette forza e' un DISTACCO NON
+%                      PREVISTO (D.distacchi, D.frazione_persa); senza questo
+%                      campo resta solo un criterio indiretto sul numero di
+%                      transizioni, e frazione_persa vale NaN.
 %
 % ORDINE DELLE ZAMPE
 %   Sempre l'ordine CAN di phantomx_config: FL FR ML MR RL RR.
@@ -59,7 +68,8 @@ run = struct( ...
     'tau',     z18, ...
     'pf',      z18, ...
     'Fc',      z18, ...
-    'contact', false(N,6), ...
+    'contact',       false(N,6), ...
+    'contact_sched', false(N,6), ...
     'meta',    struct('controller','', 'task','', 'run',1, 'seed',NaN, ...
                       'vel_d',[NaN NaN], 'yaw_d',NaN, ...
                       'condizione','nominale', 'note',''));
@@ -69,7 +79,8 @@ if N == 0
     for f = {'t','p','v','rpy','w','q','qd','tau','pf','Fc'}
         run.(f{1}) = [];
     end
-    run.contact = logical([]);
+    run.contact       = logical([]);
+    run.contact_sched = logical([]);
 end
 
 end

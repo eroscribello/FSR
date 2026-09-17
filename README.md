@@ -81,8 +81,15 @@ out = sim('phantomx_sim_zero','StopTime','10');
 | `applica_terreno('T7')` | piano liscio + disturbo impulsivo laterale |
 | `applica_terreno('TUTTO')` | tutto acceso |
 
-La definizione dei task è in `docs/piano_confronto.pdf`; qui c'è solo il terreno
+La definizione dei task è in `docs/piano_confronto.md` §6; qui c'è solo il terreno
 che ciascuno richiede.
+
+**T2 non è una singola run**: si espande nelle celle di `cfg.t2_fattori`
+(`[0.5 0.75 1.0 1.5 2.0]`), una per velocità. La griglia sta **solo** lì, e la
+leggono entrambi i runner — `script_T2` per l'impianto Simscape e
+`esegui_misure` per quello ridotto. La variabile indipendente è la **velocità
+comandata**: il periodo si ricava da `T = S/(beta_stance·v)`, così la lunghezza
+del passo resta quella validata.
 
 ### Come funziona
 
@@ -162,7 +169,7 @@ verifica_ik         % escursione di una zampa
 | `simscape/` | modello Simscape Multibody, il suo script di inizializzazione e `props/` (STL del terreno) |
 | `mpc_srb/` | MPC convesso sul modello a corpo rigido singolo, più `fcns/`, `fcns_MPC/` e il solver |
 | `phantomx_description-master/` | pacchetto ROS originale: mesh STL e URDF. **Non modificare** |
-| `docs/` | piano di confronto, changelog, paper di riferimento |
+| `docs/` | `piano_confronto.md` (controllori, metriche, task, calendario, debiti), `README.md` (porting dell'MPC da quadrupede a esapode), paper di riferimento |
 | `grafici/` | figure per la relazione |
 
 Utility nella radice:
@@ -238,7 +245,7 @@ relativo. Se qualcosa non torna, `fix_mesh_paths` (dry run di default) lo sistem
 ## Stato del progetto
 
 Il piano di confronto completo — tre controllori, cinque famiglie di metriche, sette
-task, calendario — è in **`docs/piano_confronto.pdf`**.
+task, calendario — è in **`docs/piano_confronto.md`**.
 
 | | controllore | stato |
 |---|---|---|
@@ -257,7 +264,7 @@ cfg.c2.attiva = true;    % C2                 (c2_soglia = cfg.c2.soglia_tau)
 
 ### Debiti noti
 
-Elencati per esteso in `docs/piano_confronto.pdf` §9. I due che vanno decisi **prima**
+Elencati per esteso in `docs/piano_confronto.md` §9. I due che vanno decisi **prima**
 di far partire la campagna di misura:
 
 - **Tibia 0,12 o 0,153 m.** Oggi il simulatore è internamente coerente su 0,12 (l'IK e

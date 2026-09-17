@@ -18,6 +18,17 @@ function [riga, dettaglio] = metriche(run, cfg, opt)
 %           .soglia_Fz     [N] forza normale sopra cui la zampa e' in
 %                          appoggio, se run.contact non e' fornito
 %                          (default 0.5)
+%           .durata_min_appoggio
+%                          [s] appoggi piu' brevi di questo vengono esclusi
+%                          dal conteggio dello scivolamento: sono tocchi
+%                          spuri, e il moto di volo che li accompagna
+%                          falsava slip_tot di un fattore. NaN = un quarto
+%                          della durata nominale dell'appoggio
+%           .frac_min      frazione MINIMA del task da percorrere perche' la
+%                          run conti come successo (default 0.5). E' un
+%                          criterio RELATIVO al comando: quello assoluto
+%                          ("almeno 2 cm") promuoveva una run che eseguiva il
+%                          18% del task
 %
 % USCITA
 %   riga        table 1 x M, una riga per run: e' quella che si impila per
@@ -37,7 +48,9 @@ if nargin < 2 || isempty(cfg), cfg = phantomx_config(); end
 if nargin < 3, opt = struct(); end
 
 def = struct('t_regime',1.0, 'soglia_rib',deg2rad(30), ...
-             'soglia_fermo',0.02, 'soglia_Fz',0.5, 'frac_min',0.5);f = fieldnames(def);
+             'soglia_fermo',0.02, 'soglia_Fz',0.5, 'frac_min',0.5, ...
+             'durata_min_appoggio',NaN);
+f = fieldnames(def);
 for k = 1:numel(f)
     if ~isfield(opt,f{k}), opt.(f{k}) = def.(f{k}); end
 end
@@ -162,7 +175,8 @@ end
 
 %% ---------- D. qualita' del contatto ----------
 D = struct('slip_tot',NaN, 'slip_per_passo',NaN, 'distacchi',NaN, ...
-           'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN, 'disp_carico',NaN);
+           'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN, ...
+           'disp_carico',NaN, 'appoggi_scartati',NaN, 'appoggi_totali',NaN);
 inContatto = [];
 if ha('contact')
     inContatto = logical(run.contact);
@@ -175,18 +189,58 @@ if ~isempty(inContatto)
 end
 
 if ~isempty(inContatto) && ha('pf')
-    % scivolamento: spostamento orizzontale del piede mentre e' in appoggio
-    slip = 0;
+    % Scivolamento: spostamento orizzontale del piede mentre e' in appoggio.
+    %
+    % SI SCARTANO GLI APPOGGI TROPPO BREVI, e non e' cosmetica.
+    % Misurato su una run da 10 s: 83 segmenti di appoggio invece dei 60
+    % attesi (10 cicli x 6 zampe), mediana 0.435 s contro 0.500 nominali, e
+    % il 28% sotto i 0.1 s. I segmenti principali sono corretti; i ventitre
+    % in piu' sono tocchi spuri - il piede passa vicino al terreno durante
+    % il volo e la forza ricostruita supera per pochi campioni la soglia.
+    % Ogni tocco spurio veniva contato come un appoggio, e il moto di volo
+    % che lo accompagna - a velocita' di volo, non di appoggio - finiva
+    % nello scivolamento: slip_tot risultava 0.75 m su 1.37 m percorsi,
+    % cioe' il 55%, mentre il robot andava PIU' VELOCE del comando. Le due
+    % cose non possono stare insieme, ed era il conteggio a essere sbagliato.
+    %
+    % Non si alza la soglia di forza: allungherebbe il problema dall'altro
+    % lato, accorciando l'appoggio vero (la mediana e' gia' sotto il
+    % nominale perche' la soglia taglia inizio e fine, dove la penetrazione
+    % e' piccola). Si scartano i segmenti brevi.
+    dmin = opt.durata_min_appoggio;
+    if isnan(dmin)
+        if isfield(cfg,'T') && isfield(cfg,'beta_stance')
+            dmin = 0.25 * cfg.T * cfg.beta_stance;
+        else
+            dmin = 0.1;
+        end
+    end
+
+    slip = 0;  nScartati = 0;  nSegmenti = 0;
     for i = 1:6
         ix = 3*(i-1) + (1:3);
         pfi = run.pf(:,ix);
         dxy = [0 0; diff(pfi(:,1:2))];
-        giu = inContatto(:,i) & [false; inContatto(1:end-1,i)];  % appoggio continuo
+
+        [giuLungo, ns, nt] = appoggiLunghi(inContatto(:,i), t, dmin);
+        nScartati = nScartati + ns;
+        nSegmenti = nSegmenti + nt;
+
+        giu = giuLungo & [false; giuLungo(1:end-1)];   % appoggio continuo
         slip = slip + sum(vecnorm(dxy(giu & sel,:), 2, 2));
     end
     D.slip_tot = slip;
     nPassi = max(1, round((t(end)-t(1))/cfg.T) * 6);
     D.slip_per_passo = slip / nPassi;
+    D.appoggi_scartati = nScartati;
+    D.appoggi_totali   = nSegmenti;
+
+    if nSegmenti > 0 && nScartati/nSegmenti > 0.5
+        fprintf(2,['[metriche] scartati %d appoggi su %d perche'' piu'' brevi di\n' ...
+                   '           %.3f s: piu'' della meta''. Il contatto e'' troppo\n' ...
+                   '           frammentato perche'' lo scivolamento significhi\n' ...
+                   '           qualcosa.\n'], nScartati, nSegmenti, dmin);
+    end
 
     if isfield(run,'meta') && isfield(run.meta,'impianto') && ...
             strcmpi(run.meta.impianto,'SRB')
@@ -219,8 +273,15 @@ end
 % garantisce quella di carico: a 1x le sei zampe stanno entro il 7%, a 0.5x
 % arrivano al 17% perche' il corpo si assesta dentro la cedevolezza del
 % contatto trovando un equilibrio asimmetrico.
-Fm = mean(run.Fc(sel, 3:3:18), 1);
-D.disp_carico = std(Fm) / max(mean(Fm), eps);
+%
+% La guardia ha('Fc') non c'era, e queste due righe erano le uniche a leggere
+% run.Fc fuori da una guardia: su una run senza forze di contatto la funzione
+% moriva con un errore di campo inesistente, invece di restituire NaN come
+% promette la sua stessa intestazione. Fc resta OPZIONALE.
+if ha('Fc')
+    Fm = mean(run.Fc(sel, 3:3:18), 1);
+    D.disp_carico = std(Fm) / max(mean(Fm), eps);
+end
 
 %% ---------- riga di tabella ----------
 meta = struct('controller','', 'task','', 'run',1, 'seed',NaN, ...
@@ -248,6 +309,22 @@ dettaglio = struct('t',t, 'sel',sel, 'v',v, 'inContatto',inContatto, ...
 end
 
 %% ==================== helper ====================
+function [giu, nScartati, nSegmenti] = appoggiLunghi(g, t, dmin)
+%APPOGGILUNGHI  Il contatto, con i segmenti piu' brevi di dmin azzerati.
+g   = logical(g(:));
+giu = g;
+ini = find(diff([false; g]) == 1);
+fin = find(diff([g; false]) == -1);
+n   = min(numel(ini), numel(fin));
+nSegmenti = n;  nScartati = 0;
+for k = 1:n
+    if t(fin(k)) - t(ini(k)) < dmin
+        giu(ini(k):fin(k)) = false;
+        nScartati = nScartati + 1;
+    end
+end
+end
+
 function r = rms_(x)
 x = x(:);  x = x(~isnan(x));
 if isempty(x), r = NaN; else, r = sqrt(mean(x.^2)); end

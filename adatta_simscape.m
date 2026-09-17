@@ -257,11 +257,96 @@ else
     manca{end+1} = 'tau (escluso da opt.tau)';
 end
 
+%% ==================== posizione dei piedi ====================
+% Calcolata PRIMA delle forze, perche' quando Fleg non e' disponibile le
+% forze si ricostruiscono da qui.
+pf = [];
+if opt.pf
+    if ~evalin('base','exist(''robotModel'',''var'')')
+        manca{end+1} = 'pf (robotModel assente: lancia init_gait)';
+    elseif isempty(q)
+        manca{end+1} = 'pf (servono gli angoli di giunto)';
+    else
+        if opt.verbose
+            fprintf('  calcolo pf con la cinematica diretta: %d campioni x 6 zampe...\n', numel(t));
+        end
+        pf = piedi(evalin('base','robotModel'), q, p, rpy, cfg);
+        note{end+1} = ['pf dalla FK dell''URDF: l''origine puo'' essere sfalsata di qualche mm ' ...
+                       'rispetto al frame Simscape, lo scivolamento (moto relativo) non ne risente'];
+    end
+else
+    manca{end+1} = 'pf (disattivato da opt.pf)';
+end
+
 % --- forze di contatto ---
 Fc = [];  inContatto = [];
 [tf, F] = daWorkspace(out, 'Fleg');
-if isempty(F)
-    manca{end+1} = 'Fc, contact (Fleg assente)';
+if isempty(F) || numel(tf) < 3
+    % ------------------------------------------------------------------
+    % RICOSTRUZIONE DALLA PENETRAZIONE
+    %
+    % Nel modello le forze di contatto NON sono disponibili, in nessuna
+    % delle tre forme in cui le abbiamo cercate:
+    %   - il ramo Fleg/Fsum e' un abbozzo mai finito: i dodici From cercano
+    %     le etichette Force_sens_lf..Force_sens_rr e nel modello non
+    %     esiste alcun Goto che le produca. Un From senza Goto e' risolto
+    %     come costante, da cui l'unico campione che Fleg restituiva;
+    %   - il log di Simscape non contiene i blocchi di contatto: 107 nodi,
+    %     tutti giunti piu' il 6-DOF Joint;
+    %   - LogSimulationData sui blocchi di contatto non si puo' accendere,
+    %     Simulink risponde "does not support logging".
+    %
+    % Si ricostruisce allora la forza normale dalla PENETRAZIONE, con la
+    % stessa legge costitutiva che usa il solutore - il blocco dichiara
+    % NormalForceType = SmoothSpringDamper, NormalStiffness = contact_k,
+    % NormalDamping = contact_c, NormalTransitionRegionWidth = contact_w:
+    %
+    %     delta = max(0, z_terreno - z_piede)
+    %     Fz    = (k*delta + c*d(delta)/dt) * rampa(delta/w)
+    %
+    % La quota del terreno NON viene assunta da cfg: viene RICAVATA
+    % imponendo che la somma delle sei forze valga in media il peso del
+    % robot. Cosi' un eventuale sfasamento costante della catena
+    % cinematica - che la nota su pf dichiara possibile, qualche mm - viene
+    % assorbito invece di propagarsi su tutte le forze.
+    %
+    % COSA QUESTA RICOSTRUZIONE DA' E COSA NO
+    %   da':   Fz per zampa, quindi appoggio_medio, disp_carico,
+    %          Fz_max_norm, e il contatto per slip_tot
+    %   non da': le componenti tangenziali. Fc(:,1:3:18) e Fc(:,2:3:18)
+    %          restano zero, quindi nessuna metrica di attrito.
+    %   assume: equilibrio quasi statico per la taratura della quota. In
+    %          una run con fase di volo prolungata la somma non e' il peso
+    %          e la stima della quota peggiora: il diagnostico sotto lo
+    %          segnala confrontando la forza totale media con il peso.
+    % ------------------------------------------------------------------
+    if isempty(pf)
+        manca{end+1} = 'Fc, contact (ne'' Fleg ne'' pf: servono gli angoli di giunto e robotModel)';
+    else
+        [Fz, delta, z_terr, dFz] = forzeDaPenetrazione(pf, t, cfg);
+        Fc = zeros(numel(t), 18);
+        Fc(:, 3:3:18) = Fz;
+        inContatto = Fz > opt.soglia_F;
+        note{end+1} = sprintf( ...
+            ['Fc RICOSTRUITA dalla penetrazione (k=%g, c=%g, w=%g), quota del ' ...
+             'terreno stimata a z=%.5f m dall''equilibrio dei pesi: solo la ' ...
+             'componente normale, nessun attrito'], ...
+            cfg.contact.k, cfg.contact.c, cfg.contact.w, z_terr);
+        if opt.verbose
+            fprintf('  forze ricostruite: quota terreno %.5f m, penetrazione media %.2f mm\n', ...
+                    z_terr, 1e3*mean(delta(delta>0)));
+            fprintf('    forza totale media %.3f N contro un peso di %.3f N (scarto %.1f%%)\n', ...
+                    dFz.F_media, dFz.peso, 100*(dFz.F_media/dFz.peso - 1));
+            fprintf('    piedi in appoggio in media %.2f\n', mean(sum(inContatto,2)));
+        end
+        if abs(dFz.F_media/dFz.peso - 1) > 0.05
+            note{end+1} = sprintf( ...
+                ['la forza totale ricostruita si scosta del %.0f%% dal peso: la run ' ...
+                 'ha fasi di volo o la quota del terreno non e'' costante, Fz e'' ' ...
+                 'quantitativamente inaffidabile (il contatto resta valido)'], ...
+                100*abs(dFz.F_media/dFz.peso - 1));
+        end
+    end
 elseif size(F,2) == 18
     Fc = interp1(tf, F(:,perm), t, 'linear','extrap');
     inContatto = Fc(:,3:3:18) > opt.soglia_F;
@@ -312,25 +397,6 @@ if ~isempty(inContatto)
     end
 end
 
-%% ==================== posizione dei piedi ====================
-pf = [];
-if opt.pf
-    if ~evalin('base','exist(''robotModel'',''var'')')
-        manca{end+1} = 'pf (robotModel assente: lancia init_gait)';
-    elseif isempty(q)
-        manca{end+1} = 'pf (servono gli angoli di giunto)';
-    else
-        if opt.verbose
-            fprintf('  calcolo pf con la cinematica diretta: %d campioni x 6 zampe...\n', numel(t));
-        end
-        pf = piedi(evalin('base','robotModel'), q, p, rpy, cfg);
-        note{end+1} = ['pf dalla FK dell''URDF: l''origine puo'' essere sfalsata di qualche mm ' ...
-                       'rispetto al frame Simscape, lo scivolamento (moto relativo) non ne risente'];
-    end
-else
-    manca{end+1} = 'pf (disattivato da opt.pf)';
-end
-
 %% ==================== struttura ====================
 run = run_vuoto(0);
 run.t   = t;
@@ -345,7 +411,12 @@ if ~isempty(Fc),         run.Fc  = Fc;  end
 if ~isempty(inContatto), run.contact = inContatto; end
 if ~isempty(sched),      run.contact_sched = sched; end
 
-run.meta.controller = 'C1';
+% L'etichetta del controllore si LEGGE dallo stato del modello, non si
+% assume. Era cablata a 'C1': una run fatta senza impostare OVERRIDE_C2
+% girava in C2 - cfg.c2.attiva ha default true - e finiva in tabella
+% marcata C1. Un'intera campagna puo' essere attribuita al controllore
+% sbagliato senza che nulla lo segnali.
+run.meta.controller = nomeControllore();
 run.meta.task       = 'T1';
 run.meta.run        = 1;
 run.meta.condizione = 'nominale';
@@ -586,6 +657,93 @@ end
 %% ================================================================
 %  TO WORKSPACE
 %% ================================================================
+function nome = nomeControllore()
+%NOMECONTROLLORE  C1 o C2, letto dallo stato con cui ha girato il modello.
+%
+%   La sorgente piu' attendibile e' c2_par, il vettore che init_gait
+%   assembla e che i due blocchi MATLAB Function leggono davvero:
+%   c2_par(1) = 0 significa ricerca del terreno disattivata, cioe' anello
+%   aperto. Se non c'e', si ripiega su cfg.c2.attiva. Se non c'e' nemmeno
+%   quello, si dichiara l'incertezza invece di inventare un'etichetta.
+nome = 'C?';
+try
+    if evalin('base','exist(''c2_par'',''var'')')
+        v = evalin('base','c2_par');
+        if ~isempty(v)
+            if v(1) == 0, nome = 'C1'; else, nome = 'C2'; end
+            return
+        end
+    end
+catch
+end
+try
+    c = phantomx_config();
+    if isfield(c,'c2') && isfield(c.c2,'attiva')
+        if c.c2.attiva, nome = 'C2'; else, nome = 'C1'; end
+    end
+catch
+end
+if strcmp(nome,'C?')
+    warning('adatta_simscape:controllore', ...
+        ['Non riesco a stabilire se la run e'' C1 o C2: manca c2_par nel base\n' ...
+         'workspace e cfg.c2 non e'' leggibile. L''etichetta resta ''C?'':\n' ...
+         'non metterla in tabella senza risolverla.']);
+end
+end
+
+function [Fz, delta, z_terr, diag] = forzeDaPenetrazione(pf, t, cfg)
+%FORZEDAPENETRAZIONE  Forza normale per zampa dalla quota dei piedi.
+%
+%   La legge e' quella dichiarata dai blocchi Spatial Contact Force del
+%   modello: molla-smorzatore con regione di transizione smussata.
+%
+%   La quota del terreno non e' un dato in ingresso: viene ricavata
+%   imponendo che la somma delle sei forze valga IN MEDIA il peso. E' un
+%   vincolo fisico, non una taratura, e assorbe lo sfasamento costante fra
+%   il frame della cinematica diretta e quello di Simscape.
+
+z = pf(:, 3:3:18);                 % [N x 6] quota dei sei piedi
+k = cfg.contact.k;
+c = cfg.contact.c;
+w = max(cfg.contact.w, eps);
+peso = cfg.mass * cfg.g;
+
+% --- quota del terreno dall'equilibrio ---
+% somma(zt) e' monotona crescente in zt: nulla quando il terreno sta sotto
+% il piede piu' basso, massima quando sta sopra il piu' alto. Quindi la
+% radice esiste ed e' unica.
+somma = @(zt) mean(sum(max(0, k*(zt - z)), 2)) - peso;
+lo = min(z(:));
+hi = max(z(:)) + peso/k;           % margine: garantisce somma(hi) > 0
+try
+    z_terr = fzero(somma, [lo hi]);
+catch
+    % ripiego: la quota che rende la penetrazione media pari a quella
+    % statica nominale, peso/(3k) in tripode
+    z_terr = median(min(z, [], 2)) + peso/(3*k);
+end
+
+% --- penetrazione e forza ---
+delta = max(0, z_terr - z);
+
+ddelta = zeros(size(delta));
+for i = 1:size(delta,2)
+    ddelta(:,i) = gradient(delta(:,i), t);
+end
+
+% rampa della regione di transizione: la forza non parte a gradino sui
+% primi w metri di penetrazione, come nel blocco
+s    = min(1, delta / w);
+ramp = s.^2 .* (3 - 2*s);
+
+Fz = max(0, (k*delta + c*ddelta) .* ramp);
+
+diag = struct('peso', peso, ...
+              'F_media', mean(sum(Fz,2)), ...
+              'pen_media', mean(delta(delta>0)), ...
+              'z_terr', z_terr);
+end
+
 function [t, Y] = daWorkspace(out, nome)
 %DAWORKSPACE  Legge un To Workspace qualunque sia il formato di salvataggio.
 t = [];  Y = [];
@@ -610,6 +768,33 @@ elseif isnumeric(d)
     end
 end
 if ~isempty(Y) && size(Y,1) ~= numel(t) && size(Y,2) == numel(t), Y = Y.'; end
+
+% ---- lunghezze incoerenti: un To Workspace in formato Array ----
+% Un To Workspace salvato come 'Array' non porta con se' il tempo, e se ha un
+% suo SampleTime o una Decimation la sua lunghezza NON e' quella di tout.
+% Prima questo caso arrivava fino a interp1, che si fermava con
+%   "X and V must be of the same length"
+% senza dire quale segnale fosse. Qui si ricostruisce una griglia uniforme
+% sull'intervallo della simulazione - che e' esattamente cio' che un
+% To Workspace a passo fisso produce - e si avvisa, perche' se il blocco
+% avesse invece una Decimation non uniforme la ricostruzione sarebbe
+% sbagliata e va messo in formato Timeseries.
+if ~isempty(Y) && size(Y,1) ~= numel(t)
+    n = size(Y,1);
+    if numel(t) >= 2 && n >= 2
+        warning('adatta_simscape:lunghezzaSegnale', ...
+            ['%s ha %d campioni, il tempo della simulazione ne ha %d.\n' ...
+             'E'' un To Workspace in formato Array con un passo proprio: il\n' ...
+             'tempo viene ricostruito uniforme su [%.4f, %.4f].\n' ...
+             'Per avere il tempo vero, metti il blocco in formato Timeseries\n' ...
+             '(lo fa abilita_log).'], nome, n, numel(t), t(1), t(end));
+        t = linspace(t(1), t(end), n).';
+    else
+        warning('adatta_simscape:lunghezzaSegnale', ...
+            '%s ha %d campioni e non e'' associabile a un tempo: lo scarto.', nome, n);
+        t = [];  Y = [];
+    end
+end
 end
 
 function perm = permutazione(cfg, ordine)

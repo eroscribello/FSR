@@ -123,6 +123,30 @@ cfg.H           = 0.05;
 
 cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 
+%% ===== T2: la curva di velocita' =====
+% DEFINIZIONE CANONICA, un posto solo. La leggono sia script_T2 (impianto
+% Simscape, C1/C2) sia esegui_misure (impianto ridotto, C3): finche' stava
+% scritta due volte i due CSV non erano confrontabili - esegui_misure usava
+% tre fattori variando v, script_T2 cinque variando T.
+%
+% LA VARIABILE INDIPENDENTE E' LA VELOCITA' COMANDATA, non il periodo.
+% Due ragioni:
+%   1. tutte le metriche della famiglia A sono definite RISPETTO al comando
+%      (meta.vel_d, err_vx_rms, avanzamento, frazione_task): se il comando
+%      non e' la variabile di controllo, l'ascissa della curva e' una
+%      grandezza derivata;
+%   2. e' l'unica grandezza comune ai tre controllori. C1 e C2 accettano un
+%      periodo, C3 accetta una velocita': confrontarli su "fattore di
+%      cadenza" non avrebbe senso per C3.
+% Il periodo si ricava:  T = S / (beta_stance * v).
+%
+% CINQUE PUNTI, NON TRE. Con 0.5x/1x/2x il risultato si legge come "degrada
+% ad alta velocita'": i punti a 0.75x e 1.5x mostrano invece che l'ottimo e'
+% STRETTO e che il cedimento e' di due tipi opposti (a bassa velocita'
+% assestamento asimmetrico dentro la cedevolezza del contatto, ad alta
+% perdita di appoggio). E' un risultato, e con tre punti non si vede.
+cfg.t2_fattori = [0.5 0.75 1.0 1.5 2.0];
+
 %% ===== contatto e terreno =====
 % [TARATO] La rigidezza non e' una misura: e' un'assunzione sul terreno.
 % Criterio: la penetrazione disponibile deve essere confrontabile con gli
@@ -170,11 +194,14 @@ cfg.terreno.n_prop   = 7;
 % degli ostacoli hanno l'asse z opposto a quello del mondo, come gia' visto
 % su floor_off. Con -5 gli ostacoli finiscono in aria sopra il robot.
 cfg.terreno.z_spento = +5;        % [m] quota di parcheggio
-cfg.terreno.ost_dz = 0.025;   % [m] gli ostacoli sono posati sul Cube, la cui
-                              % superficie sta 25 mm sopra il pavimento liscio.
-                              % Segno positivo: la z di quel Rigid Transform e'
-                              % opposta a quella del mondo (verificato).cfg.terreno.task.T1 = [];         % piano
-cfg.terreno.task.T2 = [];         % piano, tre velocita'
+% [MISURATO] Gli ostacoli sono posati sul Cube, la cui superficie sta 25 mm
+% sopra quella del pavimento liscio (Brick: spessore 0.05 centrato a 0.025 ->
+% 0.050; Cube: mesh +-0.05 -> 0.075). Segno POSITIVO: la z di quel Rigid
+% Transform e' opposta a quella del mondo, con -0.025 l'ostacolo sale.
+cfg.terreno.ost_dz = 0.025;       % [m]
+
+cfg.terreno.task.T1 = [];         % piano
+cfg.terreno.task.T2 = [];         % piano, curva di velocita'
 cfg.terreno.task.T3 = [];         % piano, traiettoria curva
 cfg.terreno.task.T4 = [];         % rampa - DA DEFINIRE con il collega
 cfg.terreno.task.T5 = 1;          % ostacolo singolo
@@ -198,8 +225,35 @@ cfg.dist.F     = cfg.dist.frac * cfg.mass * cfg.g;
 
 
 %% ===== switch C1 / C2 =====
-cfg.c2.attiva     = true;    % false = C1 (anello aperto)
-cfg.c2.soglia_tau = 0.5;     % [N*m]
+% cfg.c2.attiva e' L'INTERRUTTORE VERO, e arriva ai due blocchi MATLAB
+% Function come c2_par(1) (init_gait lo assembla).
+%
+% [CORREZIONE] La versione precedente di questo commento diceva che bastava
+% portare la soglia di coppia a infinito per avere l'anello aperto. E' FALSO:
+% con la soglia a infinito il flag di contatto e' sempre falso, e con il flag
+% falso la ricerca del terreno entra nel ramo di DISCESA a ogni appoggio -
+% z0 = 0.14 contro la soglia z_nom - tol = 0.138 - scendendo di z_ext_max a
+% v_search. E' il contrario dell'anello aperto.
+cfg.c2.attiva     = true;    % false = C1, anello aperto vero
+cfg.c2.soglia_tau = 0.5;     % [N*m] soglia del flag di contatto
+
+% Parametri della ricerca del terreno (Arrigoni et al. §5). Erano cablati
+% dentro i due blocchi MATLAB Function, quindi invisibili a git e duplicati:
+% z_nominal valeva 0.14, cioe' cfg.z0 riscritto a mano.
+cfg.c2.z_nom     = cfg.z0;   % [m] profondita' oltre cui si considera
+                             %     "fase di abbassamento". Legata a z0: se si
+                             %     ritara z0, la soglia segue
+cfg.c2.v_search  = 0.06;     % [m/s] velocita' di discesa in ricerca
+cfg.c2.z_ext_max = 0.03;     % [m] estensione massima sotto la nominale
+cfg.c2.t_reset   = 0.5;      % [s] nessuna ricerca nel transitorio iniziale
+cfg.c2.tol       = 0.002;    % [m] tolleranza sulla soglia di abbassamento
+
+%% ===== T3: imbardata =====
+% Il comando di imbardata per la traiettoria curva. Lato cinematico si
+% realizza ruotando la direzione del passo di ciascuna zampa: vedi
+% applica_imbardata, che riscrive i sei Constant di alpha a runtime senza
+% salvare il modello.
+cfg.yaw_d = 0.1;             % [rad/s]
 
 %% ===== controlli di coerenza =====
 % Estensione della gamba nel caso PEGGIORE del ciclo, non nella posa ferma.

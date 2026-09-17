@@ -1,6 +1,7 @@
 # --- MATLAB / Simulink ---
 slprj/                    # cache di compilazione Simscape, si rigenera
 *.slxc                    # cache del modello, si rigenera
+*.slxc.bak
 *.asv                     # autosave dell'editor
 *.autosave
 *.m~
@@ -10,17 +11,22 @@ codegen/
 # --- artefatti nostri ---
 _cestino/                 # file rimossi durante la pulizia, non fanno parte del repo
 backup_phantomx_*.zip     # backup creati da pulizia.m
-*_backup_*.slx            # backup creati da fix_mesh_paths
+*_backup_*.slx            # backup creati da setup_modello e fix_mesh_paths
 *_pre_pulizia*.slx
 *_dup_*.*
+*.slx.original            # copia lasciata da fix_mesh_paths
+*.slx.r*                  # backup di Simulink al salvataggio in versione precedente
 simscape/phantomx_piano_locale.slx
-T2_runs.mat
+commit_msg.txt*
 
 # --- output delle simulazioni ---
 # I risultati della campagna di misura si rigenerano: non vanno in git.
 # Le figure scelte per la relazione stanno in grafici/ e SONO tracciate.
 results/
 runs/
+T2_runs.mat
+T2_*.csv                  # scritto da script_T2 nella radice, non in results/
+risultati.csv
 *.mp4
 *.avi
 
@@ -28,12 +34,3 @@ runs/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-slprj/
-*.slxc
-*.slxc.bak
-*_backup_*.slx
-*.asv
-*.autosave
-commit_msg.txt*
-results/

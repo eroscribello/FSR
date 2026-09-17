@@ -3,7 +3,7 @@ function T = esegui_misure(task, opt)
 %               la tabella delle metriche.
 %
 %   T = esegui_misure                        % C3 su T1, 5 ripetizioni
-%   T = esegui_misure({'T1','T2a','T2c'})
+%   T = esegui_misure({'T1','T2'})           % T2 si espande in 5 velocita'
 %   T = esegui_misure({'T1'}, opt)
 %
 % OPZIONI
@@ -24,11 +24,21 @@ function T = esegui_misure(task, opt)
 %
 % TASK DISPONIBILI
 %   T1    piano, rettilineo, velocita' nominale
-%   T2a   piano, 0.5x la nominale
-%   T2b   piano, 1.0x  (identico a T1, tenuto per completezza della curva)
-%   T2c   piano, 2.0x
+%   T2    piano, curva di velocita': si ESPANDE nelle celle di cfg.t2_fattori
+%         (oggi 0.5x 0.75x 1.0x 1.5x 2.0x), una per fattore, tutte con
+%         task = 'T2' e condizione = 'v0.50x' ... 'v2.00x'
 %   T3    imbardata costante
 %   T7    disturbo impulsivo laterale   [richiede fcn_get_disturbance riscritta]
+%
+% LA DEFINIZIONE DI T2 STA IN cfg.t2_fattori, NON QUI
+%   Prima era scritta due volte: qui tre fattori (T2A/T2B/T2C) variando v, in
+%   script_T2 cinque variando T. Due griglie diverse per lo stesso task
+%   producono due CSV che non si possono mettere nella stessa tabella. Ora la
+%   griglia e' una sola e la variabile indipendente e' la velocita' comandata,
+%   che e' l'unica grandezza comune ai tre controllori.
+%
+%   Le vecchie etichette T2A, T2B, T2C sono ancora accettate e mappate sui
+%   fattori 0.5, 1.0, 2.0, per non rompere le chiamate salvate negli script.
 %
 %   T4, T5, T6 richiedono terreno non piano: non sono simulabili sul modello
 %   a corpo rigido singolo, arriveranno con l'MPC in Simscape.
@@ -66,12 +76,32 @@ ripristina = onCleanup(@() warning(statoWarn));
 
 cfg = phantomx_config();
 T = table();
-nTot = numel(opt.controllori) * numel(task) * opt.nRun;
+
+% --- espansione dei task: 'T2' diventa una cella per ogni fattore ---
+% La griglia sta in cfg, non qui: vedi l'intestazione.
+celle = {};      % ogni elemento: {nome, fattore}
+for it = 1:numel(task)
+    nome = task{it};
+    if strcmpi(nome,'T2')
+        for f = cfg.t2_fattori(:).'
+            celle{end+1} = {'T2', f};                          %#ok<AGROW>
+        end
+    else
+        celle{end+1} = {nome, 1};                              %#ok<AGROW>
+    end
+end
+
+nTot = numel(opt.controllori) * numel(celle) * opt.nRun;
 n = 0;
 
 fprintf('\n=== MISURE ===\n');
 fprintf('controllori: %s\n', strjoin(opt.controllori,', '));
 fprintf('task       : %s\n', strjoin(task,', '));
+if numel(celle) > numel(task)
+    fprintf('             T2 espanso in %s\n', ...
+            strjoin(arrayfun(@(f) sprintf('%.2fx',f), cfg.t2_fattori, ...
+                             'UniformOutput',false), ' '));
+end
 fprintf('ripetizioni: %d   -> %d run in totale\n\n', opt.nRun, nTot);
 
 cronometro = tic;
@@ -79,9 +109,10 @@ cronometro = tic;
 for ic = 1:numel(opt.controllori)
     ctrl = opt.controllori{ic};
 
-    for it = 1:numel(task)
-        nome = task{it};
-        d = definisci_task(nome, cfg);
+    for it = 1:numel(celle)
+        nome = celle{it}{1};
+        fatt = celle{it}{2};
+        d = definisci_task(nome, cfg, fatt);
 
         % l'override entra nell'etichetta: una run con Tmpc dimezzato non e'
         % una run nominale e non deve finire nella stessa cella
@@ -99,8 +130,8 @@ for ic = 1:numel(opt.controllori)
             seed = opt.seed0 + 1000*it + ir;
             rng(seed);
 
-            fprintf('[%2d/%2d] %s %s run %d (seed %d) ... ', ...
-                    n, nTot, ctrl, nome, ir, seed);
+            fprintf('[%2d/%2d] %s %s %s run %d (seed %d) ... ', ...
+                    n, nTot, ctrl, nome, d.condizione, ir, seed);
 
             try
                 sim_info = struct('interrotta',false, 'motivo',"");
@@ -118,7 +149,8 @@ for ic = 1:numel(opt.controllori)
                 end
 
                 r.meta.controller = ctrl;
-                r.meta.task       = nome;
+                r.meta.task       = d.nome;   % non 'nome': le etichette vecchie
+                                              % (T2A..T2C) si normalizzano in 'T2'
                 r.meta.run        = ir;
                 r.meta.seed       = seed;
                 r.meta.condizione = d.condizione;
@@ -152,7 +184,7 @@ for ic = 1:numel(opt.controllori)
 
             catch ME
                 fprintf(2,'ERRORE: %s\n', ME.message);
-                T = [T; riga_fallita(ctrl, nome, ir, seed, d, ME)];  %#ok<AGROW>
+                T = [T; riga_fallita(ctrl, d.nome, ir, seed, d, ME, cfg)];  %#ok<AGROW>
             end
         end
     end
@@ -178,18 +210,39 @@ end
 end
 
 %% ====================================================================
-function d = definisci_task(nome, cfg)
+function d = definisci_task(nome, cfg, fatt)
 %DEFINISCI_TASK  Parametri del task. Un posto solo, cosi' i task sono
 %                riproducibili e citabili nella relazione.
+%
+%   fatt  fattore di velocita' della cella, usato solo da T2. Default 1.
+%         La griglia dei fattori NON sta qui: sta in cfg.t2_fattori, perche'
+%         la legge anche script_T2 per l'impianto Simscape.
+
+if nargin < 3 || isempty(fatt), fatt = 1; end
 
 d = struct('nome',nome, 'v',cfg.v_nom, 'yaw_d',0, ...
            'disturbo',false, 'condizione','nominale');
 
 switch upper(nome)
     case 'T1',  % nominale, tutto di default
-    case 'T2A', d.v = 0.5 * cfg.v_nom;
-    case 'T2B', d.v = 1.0 * cfg.v_nom;
-    case 'T2C', d.v = 2.0 * cfg.v_nom;
+    case 'T2'
+        % La variabile indipendente e' la VELOCITA' COMANDATA: e' rispetto a
+        % lei che sono definite le metriche della famiglia A, ed e' l'unica
+        % grandezza comune ai tre controllori (C1/C2 accettano un periodo,
+        % C3 una velocita'). L'etichetta ha lo stesso formato di script_T2.
+        d.v          = fatt * cfg.v_nom;
+        d.condizione = sprintf('v%.2fx', fatt);
+    case {'T2A','T2B','T2C'}
+        % vecchie etichette, tenute per non rompere le chiamate salvate
+        vecchi = struct('T2A',0.5, 'T2B',1.0, 'T2C',2.0);
+        f = vecchi.(upper(nome));
+        d.nome       = 'T2';
+        d.v          = f * cfg.v_nom;
+        d.condizione = sprintf('v%.2fx', f);
+        warning('esegui_misure:etichettaVecchia', ...
+            ['%s e'' un''etichetta superata: usa ''T2'', che si espande su\n' ...
+             'tutti i fattori di cfg.t2_fattori. Questa cella vale %.2fx.'], ...
+            nome, f);
     case 'T3',  d.yaw_d = 0.1;                 % [rad/s]
     case 'T7',  d.disturbo = true;  d.condizione = 'disturbo-laterale';
     case {'T4','T5','T6'}
@@ -263,21 +316,70 @@ p.stepClamp  = p.S;
 end
 
 %% ====================================================================
-function riga = riga_fallita(ctrl, nome, ir, seed, d, ME)
+function riga = riga_fallita(ctrl, nome, ir, seed, d, ME, cfg)
 %RIGA_FALLITA  Una run che va in errore produce comunque la sua riga: in una
 %              campagna serve sapere QUALI celle sono fallite, non trovarsi
 %              una tabella con dei buchi.
+%
+% PERCHE' LE COLONNE SI CHIEDONO A metriche
+%   L'elenco era scritto a mano e si era disallineato: mancavano
+%   'avanzamento', 'frazione_task' e 'disp_carico', aggiunte a metriche.m
+%   dopo. Conseguenza: [T; riga_fallita(...)] fallisce la concatenazione, e la
+%   campagna perde TUTTA la tabella alla prima run andata in errore - proprio
+%   quando la riga di fallimento serve.
+%
+%   Adesso le colonne vengono da metriche.m stessa, chiamata su una run
+%   minima sintetica. Qualunque metrica aggiunta in futuro compare qui senza
+%   che nessuno debba ricordarsene. L'elenco a mano resta solo come ripiego,
+%   se quella chiamata non riuscisse.
 
-riga = table(string(ctrl), string(nome), ir, seed, string(d.condizione), NaN, ...
-    'VariableNames', {'controller','task','ripetizione','seed','condizione','durata'});
+if nargin < 7 || isempty(cfg), cfg = phantomx_config(); end
 
-vuoti = {'err_vx_rms','err_vy_rms','dev_lat_rms','dev_lat_max','yaw_err_fin', ...
-         'distanza','distanza_regime','perdita_avvio','vel_media','roll_rms','pitch_rms','roll_max','pitch_max', ...
-         'z_rms','z_max','z_media','tau_rms','tau_max','tau_rms_giunto_peggiore', ...
-         'frazione_saturo','energia','cot','potenza_max','slip_tot', ...
-         'slip_per_passo','distacchi','frazione_persa','Fz_max_norm','appoggio_medio'};
-for k = 1:numel(vuoti), riga.(vuoti{k}) = NaN; end
+riga = [];
+try
+    N  = 20;
+    r0 = struct();
+    r0.t   = (0:N-1).' * 0.01;
+    r0.p   = zeros(N,3);
+    r0.rpy = zeros(N,3);
+    r0.Fc  = zeros(N,18);
+    r0.meta = struct('controller',ctrl, 'task',nome, 'run',ir, 'seed',seed, ...
+                     'condizione',d.condizione, 'note','');
 
+    % evalc silenzia l'elenco dei campi assenti che metriche stampa
+    [~, riga] = evalc('metriche(r0, cfg, struct(''t_regime'',0))');
+
+    % tutto cio' che e' numerico non e' stato misurato: NaN
+    for v = riga.Properties.VariableNames
+        if isnumeric(riga.(v{1})), riga.(v{1}) = NaN; end
+    end
+catch
+    riga = [];
+end
+
+if isempty(riga)
+    % ripiego: elenco a mano, tenuto allineato a metriche.m
+    riga = table(string(ctrl), string(nome), ir, seed, string(d.condizione), NaN, ...
+        'VariableNames', {'controller','task','ripetizione','seed','condizione','durata'});
+
+    vuoti = {'err_vx_rms','err_vy_rms','dev_lat_rms','dev_lat_max','yaw_err_fin', ...
+             'distanza','distanza_regime','vel_media','perdita_avvio', ...
+             'avanzamento','frazione_task', ...
+             'roll_rms','pitch_rms','roll_max','pitch_max','z_rms','z_max','z_media', ...
+             'tau_rms','tau_max','tau_rms_giunto_peggiore','frazione_saturo', ...
+             'energia','cot','potenza_max', ...
+             'slip_tot','slip_per_passo','distacchi','frazione_persa', ...
+             'Fz_max_norm','appoggio_medio','disp_carico'};
+    for k = 1:numel(vuoti), riga.(vuoti{k}) = NaN; end
+    riga.note = "";
+end
+
+% i metadati sono noti anche quando la run fallisce
+riga.controller       = string(ctrl);
+riga.task             = string(nome);
+riga.ripetizione      = ir;
+riga.seed             = seed;
+riga.condizione       = string(d.condizione);
 riga.successo         = false;
 riga.causa_fallimento = "errore di esecuzione";
 riga.note             = string(ME.message);
@@ -289,17 +391,20 @@ function riassumi(T)
 %          vanno nella relazione: un run singolo e' un aneddoto, cinque sono
 %          una misura.
 
+% Il raggruppamento include la CONDIZIONE, non solo controllore e task: le
+% cinque velocita' di T2 hanno tutte task = 'T2' e collassavano in un'unica
+% riga di riepilogo, che e' esattamente la media che non si vuole vedere.
 fprintf('\n--- riepilogo per cella ---\n');
-[gr, ctrl, tsk] = findgroups(T.controller, T.task);
+[gr, ctrl, tsk, cnd] = findgroups(T.controller, T.task, T.condizione);
 
-fprintf('%-5s %-5s %5s %10s %10s %10s %10s\n', ...
-        'ctrl','task','succ','v [m/s]','roll [mrad]','pitch [mrad]','dev [mm]');
+fprintf('%-5s %-5s %-10s %5s %10s %10s %10s %10s\n', ...
+        'ctrl','task','condizione','succ','v [m/s]','roll [mrad]','pitch [mrad]','dev [mm]');
 
 for k = 1:max(gr)
     s = T(gr==k, :);
     ok = s.successo;
-    fprintf('%-5s %-5s %2d/%-2d %6.4f±%.4f %5.2f±%.2f %5.2f±%.2f %5.1f±%.1f\n', ...
-        ctrl(k), tsk(k), nnz(ok), height(s), ...
+    fprintf('%-5s %-5s %-10s %2d/%-2d %6.4f±%.4f %5.2f±%.2f %5.2f±%.2f %5.1f±%.1f\n', ...
+        ctrl(k), tsk(k), cnd(k), nnz(ok), height(s), ...
         mean(s.vel_media(ok),'omitnan'),  std(s.vel_media(ok),'omitnan'), ...
         1e3*mean(s.roll_rms(ok),'omitnan'),  1e3*std(s.roll_rms(ok),'omitnan'), ...
         1e3*mean(s.pitch_rms(ok),'omitnan'), 1e3*std(s.pitch_rms(ok),'omitnan'), ...
