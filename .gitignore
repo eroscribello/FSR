@@ -20,13 +20,30 @@ simscape/phantomx_piano_locale.slx
 commit_msg.txt*
 
 # --- output delle simulazioni ---
-# I risultati della campagna di misura si rigenerano: non vanno in git.
-# Le figure scelte per la relazione stanno in grafici/ e SONO tracciate.
-results/
+# LA REGOLA: i CSV DI CAMPAGNA SONO TRACCIATI, le run grezze no.
+#
+# Prima era il contrario e l'incoerenza era doppia: T2_*.csv ignorato ma
+# T3_risultati.csv tracciato, e results/ ignorato per intero - quindi i CSV
+# della campagna C3 (esegui_misure) e della taratura finivano fuori da git
+# mentre quelli di T3 ci finivano dentro, senza una ragione.
+#
+# Perche' TRACCIARLI: un CSV di campagna e' il risultato, non un artefatto.
+# Poche decine di righe di testo, leggibili in diff, ed e' l'unico modo di
+# vedere che una cella e' cambiata fra due commit - cosa che serve, visto che
+# in questo progetto una campagna e' gia' girata sul terreno sbagliato e i
+# numeri sembravano plausibili. Se stanno fuori da git, l'unica copia dei
+# numeri che vanno in relazione vive su un disco.
+#
+# Perche' NON tracciare le run grezze: T2_runs.mat pesa 4 MB, e' binario,
+# git non lo puo' fondere, e si rigenera dal modello. Stesso discorso per le
+# figure di lavoro: quelle scelte per la relazione stanno in grafici/ e SONO
+# tracciate, le altre no.
 runs/
 T2_runs.mat
-T2_*.csv                  # scritto da script_T2 nella radice, non in results/
-risultati.csv
+results/**/*.mat
+results/**/*.png
+results/**/*.fig
+risultati.csv             # vecchio nome, sostituito da T2_<controllore>.csv
 *.mp4
 *.avi
 

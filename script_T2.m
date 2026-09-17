@@ -32,7 +32,7 @@ t2_cfg    = phantomx_config();
 t2_mdl    = 'phantomx_sim_zero';
 t2_fatt   = t2_cfg.t2_fattori;
 t2_nCicli = 10;
-t2_c2     = false;          % false = C1, anello aperto. true = C2.
+t2_c2     = true;          % false = C1, anello aperto. true = C2.
 T2 = table();
 t2_runs  = cell(1, numel(t2_fatt));
 t2_etichette = cell(1, numel(t2_fatt));
@@ -105,9 +105,26 @@ end
 clear OVERRIDE_GAIT OVERRIDE_C2
 init_gait                                                      % ripristina i valori di cfg
 
-writetable(T2, 'T2_C1.csv');
+% IL NOME DEL FILE DEVE CONTENERE IL CONTROLLORE.
+% Era cablato a 'T2_C1.csv': lanciare lo script con t2_c2 = true sovrascriveva
+% la campagna C1 con dati C2, senza dire niente e senza modo di accorgersene
+% dopo. Un CSV con l'etichetta sbagliata nel nome e' peggio di nessun CSV.
+% I CSV di campagna vanno in results/, non nella radice: sono il risultato e
+% stanno insieme a quelli di esegui_misure e taratura_T2, che ci scrivevano
+% gia'. Da quando .gitignore ignora results/ per ESTENSIONE e non per
+% cartella, i .csv la' dentro sono tracciati e i .mat no.
+if ~isfolder('results'), mkdir('results'); end
+t2_file = fullfile('results', sprintf('T2_%s.csv', t2_nome_ctrl(t2_c2)));
+writetable(T2, t2_file);
+fprintf('\nscritto  %s\n\n', t2_file);
+
+% sotto3_frac e corpoZ_pp servono a leggere le celle FUORI dall'inviluppo
+% (1.5x e 2.0x): li' frazione_task e' negativa e senza queste due colonne non
+% si puo' dire perche'. A quelle velocita' non e' errore di inseguimento - i
+% giunti eseguono la corsa comandata - e' il robot che non cammina.
 disp(T2(:, {'condizione','vel_media','frazione_task','successo', ...
-            'causa_fallimento','cot','frazione_saturo'}))
+            'appoggio_medio','sotto3_frac','corpoZ_pp','corpoZ_vz', ...
+            'potenza_max','cot'}))
 
 fprintf('\n');
 for t2_j = 1:numel(t2_runs)

@@ -140,7 +140,12 @@ clear OVERRIDE_GAIT OVERRIDE_C2
 init_gait
 
 %% ================= risultati =================
-writetable(T3, 'T3_risultati.csv');
+% Il nome contiene il controllore: 'T3_risultati.csv' era lo stesso file per
+% C1 e C2, quindi la seconda campagna cancellava la prima in silenzio.
+if ~isfolder('results'), mkdir('results'); end
+t3_file = fullfile('results', sprintf('T3_%s.csv', t3_nome_ctrl(t3_c2)));
+writetable(T3, t3_file);
+fprintf('\nscritto  %s\n', t3_file);
 
 % Solo le colonne che hanno senso su un arco: vedi la nota in testa al file.
 disp(T3(:, {'condizione','yaw_cmd','yaw_mis','yaw_rapporto','arco', ...

@@ -95,6 +95,75 @@ Restano fuori dall'archivio mappa_contatti e quota_terreno, che applica_terreno
 CHIAMA, e taratura_T2 e limite_velocita, che vanno rilanciati se cambia la
 geometria.
 
+CAMPAGNA T2 COMPLETA, C1 E C2
+results/T2_C1.csv e results/T2_C2.csv, cinque celle ciascuna.
+
+Sull'avanzamento T2 NON discrimina i due controllori, come previsto: frazione
+del task entro il 2% nelle tre celle dentro l'inviluppo. Sulla qualita' del
+contatto invece si', e in peggio: a 1x sotto3_frac passa da 0.004 a 0.169,
+i distacchi da 23 a 70, la potenza di picco da 13 a 48 W.
+
+Il meccanismo si legge in z_media: con C2 il corpo sta 5-8 mm PIU' IN ALTO a
+ogni velocita'. La ricerca estende le zampe verso il basso su un terreno dove
+non c'e' niente da cercare. Parte quando c(i) = 0 e il comando vuole la zampa
+a terra, e al touchdown la forza sta sotto soglia per qualche decina di ms:
+quindi parte a OGNI appoggio. Il corpo si alza, le altre zampe si scaricano,
+altri dropout, e si autoalimenta. Nell'articolo la ricerca serve a una zampa
+che NON TROVA il terreno, non al transitorio normale di contatto. Difetto di
+implementazione, non del metodo: la correzione naturale e' un ritardo di
+innesco, da provare.
+
+Vicino al limite invece C2 si ripaga: a 1.5x l'avanzamento passa da 0.826 a
+0.910 e la potenza di picco si DIMEZZA, da 286 a 139 W. Li' le zampe perdono
+l'appoggio davvero e la ricerca ha qualcosa da trovare.
+
+Da riportare cosi': C2 SPOSTA IL COSTO, non lo elimina. Paga dove il terreno
+e' noto e incassa dove sorprende - il compromesso che un MPC con orizzonte non
+dovrebbe dover fare, ed e' il confronto da impostare con C3.
+
+corpoZ_vz: L'AMPIEZZA DA SOLA NON BASTA
+Terza colonna nuova, e nasce da un mio errore. Con la sola corpoZ_pp la cella
+0.5x sembrava fuori inviluppo quanto 1.5x: 29.1 mm contro 33.3, e anche z_rms,
+roll_rms e pitch_rms coincidevano. L'avevo classificata cosi'.
+
+Ma in animazione a 0.5x il corpo dondola e a 1.5x sbatte, ed e' vero: quei
+30 mm sono percorsi in 2 s contro 0.67. corpoZ_vz, l'rms della velocita'
+verticale, li separa - 0.067 contro 0.200 m/s - e potenza_max lo conferma da
+sola, 29 W contro 286.
+
+0.5x resta quindi un punto di confronto valido: e' l'altro regime di
+cedimento, lento e a bassa energia, non perdita di appoggio. Lezione: una
+metrica di sola ampiezza non classifica un fenomeno che si distingue dai
+tempi.
+
+Nota: corpoZ_vz e' l'rms e non il picco. Il picco lo fa un singolo impatto, e
+qui si confrontano due regimi di moto, non due eventi.
+
+DOCUMENTAZIONE
+- docs/come_funziona_ricerca_terreno.md: i due blocchi MATLAB Function
+  spiegati per chi ha scritto la versione originale - cosa fanno, cosa e'
+  stato spostato fuori dal .slx e perche', i tre rami della logica, e cosa non
+  rompere (i nomi degli argomenti sono i nomi delle porte, e Function3 ha
+  l'ordine rf/rr/lm che non va riordinato in alfabetico).
+- README: sezione "Campagne di misura" con T2 e T3, le cinque velocita' e il
+  loro ruolo, e le colonne con cui si leggono le celle fuori inviluppo.
+- docs/piano_confronto.md: il paragrafo sull'interruttore C1/C2 diceva ANCORA
+  che la soglia infinita da' l'anello aperto. Corretto sul posto.
+
+I CSV DI CAMPAGNA ENTRANO IN GIT
+.gitignore aveva una doppia incoerenza: T2_*.csv ignorato ma T3_risultati.csv
+tracciato, e results/ ignorato per intero - quindi i CSV di esegui_misure e
+della taratura restavano fuori senza una ragione. Ora results/ e' ignorato per
+ESTENSIONE: i .csv dentro sono tracciati, i .mat e le figure no.
+
+Un CSV di campagna e' il risultato, non un artefatto: poche decine di righe di
+testo, leggibili in diff, ed e' l'unico modo di vedere che una cella e'
+cambiata fra due commit. Serve, visto che una campagna e' gia' girata sul
+terreno sbagliato con numeri che sembravano plausibili.
+
+I due script scrivono in results/ con il controllore nel nome. Era cablato a
+'T2_C1.csv': lanciare la campagna C2 sovrascriveva quella C1 in silenzio.
+
 APERTI
 - l'escursione del piede misura il 118-120% di S a tutte le velocita', non il
   100%. Offset sistematico, probabilmente l'origine della cinematica diretta.
@@ -104,4 +173,13 @@ APERTI
   lanciarlo. Quei messaggi vanno corretti prima di archiviarli.
 - T4: la rampa condivide floor_dim col pavimento, serve un rampa_dim proprio.
 - quota_terreno stampa le quote assolute nel frame dei Rigid Transform.
-- il beccheggio in marcia rettilinea: origine_beccheggio da lanciare.
+- il beccheggio in marcia rettilinea: origine_beccheggio da lanciare. Serve
+  anche a C2, dove pitch_rms vale ~0.03 rad quasi costante su tutte le
+  velocita' basse: un valore costante somiglia a un OFFSET piu' che a
+  un'oscillazione, e pitch_rms e' l'RMS dell'angolo, quindi le due cose si
+  confondono. Finche' non si separano, "C2 fa beccheggiare il robot di 2
+  gradi" non e' sostenuto.
+- il cost of transport a 1x vale 2.32 in campagna e 1.43 nella taratura, sullo
+  stesso punto nominale. Il 60% di differenza sulla stessa grandezza, e 1.43 e'
+  il numero da cui nasce l'affermazione sul costo del franco. Da capire quale
+  delle due run non e' confrontabile, prima che finisca in relazione.

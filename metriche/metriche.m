@@ -44,6 +44,11 @@ function [riga, dettaglio] = metriche(run, cfg, opt)
 %                E' il modo in cui l'andatura cinematica cede: su C1 vale
 %                0.003 a 1x, 0.033 a 1.5x, 0.081 a 2x, su un'altezza di
 %                appoggio di 0.154.
+%   corpoZ_vz    [m/s] rms della velocita' verticale del corpo. VA LETTA
+%                INSIEME a corpoZ_pp e non al suo posto: l'ampiezza da sola
+%                non distingue il dondolio lento di 0.5x (29.1 mm) dal
+%                rimbalzo di 1.5x (33.3 mm), che sono due cedimenti diversi
+%                con la stessa ampiezza e tempi diversi.
 %   Senza queste due, una cella che fallisce da' solo frazione_task negativa
 %   e nessun modo di attribuirne la causa - ed e' esattamente il confronto
 %   che serve fra il cinematico e l'MPC alle velocita' alte.
@@ -190,7 +195,7 @@ end
 D = struct('slip_tot',NaN, 'slip_per_passo',NaN, 'distacchi',NaN, ...
            'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN, ...
            'disp_carico',NaN, 'appoggi_scartati',NaN, 'appoggi_totali',NaN, ...
-           'sotto3_frac',NaN, 'corpoZ_pp',NaN);
+           'sotto3_frac',NaN, 'corpoZ_pp',NaN, 'corpoZ_vz',NaN);
 inContatto = [];
 if ha('contact')
     inContatto = logical(run.contact);
@@ -237,6 +242,24 @@ if ha('p') && size(run.p,2) >= 3
     if isnan(D.corpoZ_pp) && ~isempty(zc)
         D.corpoZ_pp = max(zc) - min(zc);
     end
+end
+
+% LA VELOCITA' VERTICALE, CHE E' QUELLA CHE DISTINGUE I DUE CEDIMENTI.
+%
+% corpoZ_pp da sola non basta, e l'errore e' stato fatto: a 0.5x vale 29.1 mm
+% e a 1.5x 33.3 mm, praticamente uguali, e anche z_rms, roll_rms e pitch_rms
+% coincidono. Sulla sola ampiezza le due celle sono indistinguibili, e 0.5x
+% era stata classificata come fuori inviluppo per questo.
+%
+% Ma a 0.5x quei 30 mm sono percorsi in 2 s e a 1.5x in 0.67: uno DONDOLA,
+% l'altro SBATTE. In animazione si vede subito, nell'ampiezza no.
+% Corrispondenza nelle colonne che gia' c'erano: potenza_max 28.9 W contro
+% 285.7, tau_max 3.48 contro 9.14.
+%
+% Si usa l'rms e non il picco: il picco lo fa un singolo impatto, e sono due
+% regimi di moto che vanno confrontati, non due eventi.
+if ha('v') && size(run.v,2) >= 3
+    D.corpoZ_vz = rms_(run.v(sel,3));
 end
 
 if ~isempty(inContatto) && ha('pf')

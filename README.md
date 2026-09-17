@@ -58,6 +58,95 @@ MAIN
 
 ---
 
+## Campagne di misura
+
+I risultati vanno in `results/`, un CSV per task e controllore:
+`results/T2_C1.csv`, `results/T2_C2.csv`, `results/T3_C1.csv`. Sono tracciati
+da git — sono il risultato, non un artefatto — mentre le run grezze (`.mat`) e
+le figure di lavoro no.
+
+### T2 — curva di velocità
+
+```matlab
+clear
+startup_phantomx
+init_gait
+script_T2
+```
+
+Cinque celle, dieci cicli ciascuna, terreno T2 fissato dallo script. Dura
+qualche minuto.
+
+**Per cambiare controllore** si modifica una riga sola, in testa a
+`script_T2.m`:
+
+```matlab
+t2_c2 = false;     % C1, anello aperto
+t2_c2 = true;      % C2, con ricerca del terreno
+```
+
+Il nome del file segue il controllore, quindi le due campagne non si
+sovrascrivono. L'interruttore vero è `c2_par(1)`, che `init_gait` assembla da
+`cfg.c2.attiva`: **non** è la soglia di coppia, vedi
+`docs/come_funziona_ricerca_terreno.md`.
+
+**Le cinque velocità e cosa sono** (`cfg.t2_fattori`):
+
+| cella | ruolo |
+|---|---|
+| `0.5x` | bassa velocità |
+| `1.0x` | nominale |
+| `1.20x` | **limite misurato di C1** (`cfg.t2_limite`) |
+| `1.5x` | fuori inviluppo — il robot saltella |
+| `2.0x` | fuori inviluppo — il robot indietreggia |
+
+Le ultime due **falliscono per costruzione**: `frazione_task` negativa a 2× non
+è un errore della campagna, è il risultato. Vanno lette con `sotto3_frac` e
+`corpoZ_pp`, non con `err_vx_rms`: a quelle velocità i giunti eseguono la corsa
+comandata (escursione del piede 118% di `S` a tutte le velocità), quindi non è
+un errore di inseguimento — è il robot che non cammina.
+
+**Le due colonne che dicono *perché* una cella fallisce:**
+
+| colonna | cosa misura | 1.0× | 2.0× |
+|---|---|---|---|
+| `sotto3_frac` | frazione di tempo con meno di tre piedi a terra | 0.004 | 0.61 |
+| `corpoZ_pp` | rimbalzo verticale del corpo, picco-picco per ciclo | 3.2 mm | 81 mm |
+
+`appoggio_medio` da solo non basta e non va usato per questo: una media di 3.0
+vale sia per «tre piedi sempre a terra» sia per «sei e zero alternati», che
+sono andature completamente diverse.
+
+### T3 — traiettoria curva
+
+```matlab
+script_T3
+```
+
+**La prima cella non è una misura, è un controllo del segno.** Se l'imbardata
+misurata ha segno opposto al comando lo script si ferma e dice quale riga di
+`applica_imbardata` cambiare. Non correggere i sei `Constant` a mano: il segno
+è uno solo.
+
+Il numero da guardare è `yaw_rapporto`. La misura viene da `run.w(:,3)`, la
+velocità angolare dal log; l'angolo srotolato resta come controllo incrociato e
+`tasso_imbardata` avvisa se le due stime divergono oltre il 20%. Se la riga
+`sorgente della misura` dice `angolo srotolato`, `run.w` non è arrivato e il
+numero va guardato con sospetto — l'angolo si avvolge a ±π e su una run da 15 s
+non può restituire niente fuori da ±0.209 rad/s.
+
+`script_T3` chiama `applica_imbardata`, che fa `set_param` sui sei `Constant`
+di `alpha`. **Non salva il modello, ma lo sporca**, e ripristina con
+`applica_imbardata(0)` solo se arriva alla fine. Se si interrompe a metà,
+lanciare `applica_imbardata(0)` a mano prima di fare qualunque cosa con il
+`.slx`.
+
+Su T3 **non** guardare `err_vx_rms`, `err_vy_rms`, `dev_lat_*` e `distanza`:
+sono definite per la marcia rettilinea e su un arco misurano la curva, non il
+controllore. Stanno nel CSV per uniformità di tabella.
+
+---
+
 ## Scenari di terreno
 
 Il terreno di ogni task si sceglie da script, prima di simulare. Il `.slx` **non
@@ -276,10 +365,19 @@ di far partire la campagna di misura:
 Aperti sul banco di prova:
 
 - **Geometria della rampa (T4)**: da ridimensionare e riposizionare, non da ricablare.
-- **Filtri `sys_filter`**: 18 filtri del primo ordine con `tau = 0,05 s` sui comandi di
-  giunto, nell'`InitFcn`. A doppia velocità lo swing dura 200 ms e il filtro ne taglia
-  il 25%: va escluso che il fallimento della cella 2× sia del banco e non del
-  controllore.
+- **~~Filtri `sys_filter`~~ — CHIUSO.** `sys_filter` esiste, ha 18 stati e i suoi poli
+  seguono `tau` alla cifra, ma **nessuno dei 2085 blocchi del modello lo legge**:
+  l'`InitFcn` lo costruisce e il modello lo ignora. Non c'entra con la cella 2×, che
+  fallisce perché il tripode non regge l'andatura (vedi `archivio/README.md`). Il
+  filtro resta lì come residuo: si può togliere dall'`InitFcn`, ma non è urgente.
+- **La tabella delle metriche ha troppe colonne** (48) ed è diventata difficile da
+  leggere. Da affrontare, ma con una distinzione: **il CSV deve restare completo** — è
+  il record, e una colonna tolta dal record non si recupera. Quello che va ridotto è la
+  *vista*: una funzione che seleziona il sottoinsieme giusto per task, usata sia dal
+  `disp` degli script sia per esportare accanto al CSV completo una tabella corta,
+  quella che va in relazione. Togliere colonne dal CSV per guadagnare leggibilità
+  sarebbe l'errore: le colonne che oggi sembrano di troppo sono quelle che hanno
+  spiegato il fallimento a 2×.
 - **Due `Data Store Write`** su `j_c1_rr` e `j_thigh_rr` scrivono nella stessa memoria
   senza ordine garantito.
 - **Semantica di `c_*` e `z_*`** nei blocchi To Workspace: da chiarire se siano forze o

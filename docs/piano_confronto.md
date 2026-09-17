@@ -112,14 +112,79 @@ la coppia al femore supera una soglia, la zampa è a terra e si blocca lì.
 La semplificazione va **dichiarata** nella relazione: noi misuriamo la coppia,
 loro la stimano. È a nostro vantaggio e va detto, non nascosto.
 
-**Interruttore C1/C2**, senza blocchi aggiuntivi: con soglia infinita il
-confronto è sempre falso, la zampa non viene mai bloccata e il comportamento
-torna quello in anello aperto.
+**Interruttore C1/C2.** L'interruttore è `c2_par(1)`, che `init_gait` assembla
+da `cfg.c2.attiva`, e in pratica si usa `OVERRIDE_C2`:
 
 ```matlab
-cfg.c2.attiva = false;   % C1  ->  c2_soglia = inf
-cfg.c2.attiva = true;    % C2  ->  c2_soglia = cfg.c2.soglia_tau
+OVERRIDE_C2 = false;  init_gait     % C1, anello aperto vero
+OVERRIDE_C2 = true;   init_gait     % C2
+clear OVERRIDE_C2                   % torna a cfg.c2.attiva
 ```
+
+> **[CORRETTO]** Questo paragrafo diceva che bastava portare la soglia di
+> coppia a infinito. **È falso e fa il contrario.** Con la soglia infinita il
+> flag di contatto è sempre 0, e con il flag a 0 la ricerca entra nel ramo di
+> **discesa** a ogni appoggio — `z0 = 0.140` contro la soglia `0.138` — quindi
+> la zampa scende di 3 cm a 0,06 m/s. È la ricerca al massimo della sua
+> autorità, non l'anello aperto. Dettagli in
+> `docs/come_funziona_ricerca_terreno.md`.
+
+### [MISURATO] Su terreno piano C2 non serve, e si fa sentire
+
+T2 era classificato come **non discriminante** fra C1 e C2, con questa
+motivazione: su terreno piano la retroazione sul contatto non ha niente da
+trovare, quindi non interviene. **La prima metà è confermata, la seconda no.**
+
+Avanzamento, a parità di cella (`frazione_task`):
+
+| | 0.50× | 1.00× | 1.20× | 1.50× | 2.00× |
+|---|---|---|---|---|---|
+| C1 | 0.847 | 1.163 | 1.119 | 0.826 | −0.482 |
+| C2 | 0.845 | 1.140 | 1.112 | **0.910** | −0.371 |
+
+Entro il 2% nelle prime tre celle: T2 non discrimina sull'avanzamento, come
+previsto. Ma la qualità del contatto sì, e in peggio:
+
+| a 1.00× | C1 | C2 |
+|---|---|---|
+| `sotto3_frac` | 0.004 | **0.169** |
+| `distacchi` | 23 | 70 |
+| `pitch_rms` | 0.0012 rad | **0.0339 rad** |
+| `potenza_max` | 13.2 W | 47.9 W |
+| `z_media` | 0.1519 m | **0.1574 m** |
+
+**Il meccanismo si legge in `z_media`:** con C2 il corpo sta 5–8 mm più in alto
+a ogni velocità. La ricerca estende le zampe verso il basso, quindi il corpo si
+alza — su un terreno dove non c'è niente da cercare.
+
+Perché si attiva: la ricerca parte quando `c(i) == 0` e il comando vuole la
+zampa a terra. All'istante del touchdown la forza è sotto la soglia per qualche
+decina di ms, quindi `c = 0` e la ricerca **parte a ogni appoggio**, estendendo
+di qualche mm. Il corpo si alza, le altre zampe si scaricano, altri dropout: si
+autoalimenta. Nell'articolo la ricerca serve a una zampa che **non trova** il
+terreno, non al transitorio normale di contatto.
+
+È un difetto di implementazione, non del metodo, e la correzione naturale è un
+**ritardo di innesco**: non cercare finché non è passato un tempo minimo dal
+touchdown comandato. Da provare, non ancora provato.
+
+**Vicino al limite invece C2 aiuta.** A 1.50× l'avanzamento passa da 0.826 a
+0.910 e la potenza di picco si **dimezza**, da 285.7 a 139.3 W, con `cot` da
+7.48 a 6.51. Lì le zampe perdono davvero l'appoggio, quindi la ricerca ha
+qualcosa da trovare e il suo costo è ripagato. A 2.00× non basta più: il robot
+indietreggia meno (−0.371 contro −0.482) ma consuma quasi il doppio
+(`cot` 30.9 contro 18.0).
+
+Da riportare così: **C2 sposta il costo, non lo elimina.** Paga qualità del
+contatto e energia dove il terreno è noto, e la recupera dove il terreno
+sorprende — che è esattamente il compromesso che un MPC con orizzonte non
+dovrebbe dover fare, ed è il confronto da impostare con C3.
+
+Aperto: `pitch_rms` con C2 vale ~0.03 rad a tutte le velocità basse, quasi
+costante. Un valore costante somiglia a un **offset** più che a un'oscillazione,
+e `pitch_rms` è l'RMS dell'angolo, quindi le due cose si confondono.
+`origine_beccheggio` le separa e non è ancora stato lanciato: finché non lo si
+fa, «C2 fa beccheggiare il robot di 2°» non è un'affermazione sostenuta.
 
 ### Il PD d'assetto
 
