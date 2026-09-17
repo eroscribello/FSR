@@ -25,8 +25,10 @@ function T = esegui_misure(task, opt)
 % TASK DISPONIBILI
 %   T1    piano, rettilineo, velocita' nominale
 %   T2    piano, curva di velocita': si ESPANDE nelle celle di cfg.t2_fattori
-%         (oggi 0.5x 0.75x 1.0x 1.5x 2.0x), una per fattore, tutte con
-%         task = 'T2' e condizione = 'v0.50x' ... 'v2.00x'
+%         (oggi 0.5x 1.0x 1.20x 1.5x 2.0x), una per fattore, tutte con
+%         task = 'T2' e condizione = 'v0.50x' ... 'v2.00x'.
+%         1.20x e' il LIMITE misurato di C1, e le ultime due celle sono
+%         FUORI dall'inviluppo: vedi cfg.t2_confronto e cfg.t2_fuori
 %   T3    imbardata costante
 %   T7    disturbo impulsivo laterale   [richiede fcn_get_disturbance riscritta]
 %

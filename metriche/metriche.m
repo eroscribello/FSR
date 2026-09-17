@@ -35,6 +35,19 @@ function [riga, dettaglio] = metriche(run, cfg, opt)
 %               fare la tabella della campagna
 %   dettaglio   struttura con le serie temporali intermedie, per i grafici
 %
+% DUE COLONNE CHE DICONO *PERCHE'* UNA CELLA FALLISCE
+%   sotto3_frac  frazione di tempo con meno di tre piedi a terra. Distingue
+%                un tripode che tiene da un'andatura intermittente, cosa che
+%                appoggio_medio NON fa: una media di 3.0 e' compatibile sia
+%                con tre piedi sempre giu' sia con sei e zero alternati.
+%   corpoZ_pp    [m] rimbalzo verticale del corpo, picco-picco per ciclo.
+%                E' il modo in cui l'andatura cinematica cede: su C1 vale
+%                0.003 a 1x, 0.033 a 1.5x, 0.081 a 2x, su un'altezza di
+%                appoggio di 0.154.
+%   Senza queste due, una cella che fallisce da' solo frazione_task negativa
+%   e nessun modo di attribuirne la causa - ed e' esattamente il confronto
+%   che serve fra il cinematico e l'MPC alle velocita' alte.
+%
 % CAMPI MANCANTI
 %   Le metriche che dipendono da campi assenti in run valgono NaN, e la
 %   funzione stampa una volta l'elenco di cosa manca. Non e' un errore:
@@ -176,7 +189,8 @@ end
 %% ---------- D. qualita' del contatto ----------
 D = struct('slip_tot',NaN, 'slip_per_passo',NaN, 'distacchi',NaN, ...
            'frazione_persa',NaN, 'Fz_max_norm',NaN, 'appoggio_medio',NaN, ...
-           'disp_carico',NaN, 'appoggi_scartati',NaN, 'appoggi_totali',NaN);
+           'disp_carico',NaN, 'appoggi_scartati',NaN, 'appoggi_totali',NaN, ...
+           'sotto3_frac',NaN, 'corpoZ_pp',NaN);
 inContatto = [];
 if ha('contact')
     inContatto = logical(run.contact);
@@ -186,6 +200,43 @@ end
 
 if ~isempty(inContatto)
     D.appoggio_medio = mean(sum(inContatto(sel,:),2));   % zampe a terra in media
+
+    % SOTTO TRE PIEDI: la frazione di tempo in cui il tripode non c'e'.
+    %
+    % appoggio_medio non basta, ed e' un errore che ho gia' fatto: la media
+    % nasconde l'intermittenza. Su C1 a 2x valeva 2.12, sotto tre, ma una
+    % media di 3.0 e' compatibile sia con tre piedi sempre a terra sia con
+    % sei e zero alternati - due andature completamente diverse. Questa e'
+    % la metrica che le distingue, e a 1x vale 0.4% contro il 61% a 2x.
+    D.sotto3_frac = mean(sum(inContatto(sel,:),2) < 3);
+end
+
+% RIMBALZO DEL CORPO: picco-picco di z, ciclo per ciclo.
+%
+% E' la misura dei "saltelli" visibili in animazione, e su C1 e' il modo in
+% cui l'andatura cede: 3.2 mm a 1x, 33.3 a 1.5x, 80.9 a 2x su un'altezza di
+% appoggio di 154 mm. Senza questa colonna una cella che fallisce da'
+% frazione_task negativa e nessun modo di dire perche'.
+%
+% Per ciclo e non su tutta la run: su tutta la run il picco-picco include
+% la deriva verticale e sovrastima. La mediana fra i cicli e' robusta ai
+% cicli anomali, che alle velocita' alte ci sono.
+if ha('p') && size(run.p,2) >= 3
+    zc = run.p(sel,3);  tc = t(sel);
+    if isfield(cfg,'T') && ~isempty(cfg.T) && cfg.T > 0 && numel(tc) > 3
+        bordi = tc(1):cfg.T:tc(end);
+        if numel(bordi) >= 2
+            v = nan(numel(bordi)-1,1);
+            for k = 1:numel(bordi)-1
+                m = tc >= bordi(k) & tc < bordi(k+1);
+                if sum(m) >= 3, v(k) = max(zc(m)) - min(zc(m)); end
+            end
+            D.corpoZ_pp = median(v,'omitnan');
+        end
+    end
+    if isnan(D.corpoZ_pp) && ~isempty(zc)
+        D.corpoZ_pp = max(zc) - min(zc);
+    end
 end
 
 if ~isempty(inContatto) && ha('pf')

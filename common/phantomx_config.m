@@ -141,11 +141,52 @@ cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 % Il periodo si ricava:  T = S / (beta_stance * v).
 %
 % CINQUE PUNTI, NON TRE. Con 0.5x/1x/2x il risultato si legge come "degrada
-% ad alta velocita'": i punti a 0.75x e 1.5x mostrano invece che l'ottimo e'
+% ad alta velocita'": i punti intermedi mostrano invece che l'ottimo e'
 % STRETTO e che il cedimento e' di due tipi opposti (a bassa velocita'
 % assestamento asimmetrico dentro la cedevolezza del contatto, ad alta
 % perdita di appoggio). E' un risultato, e con tre punti non si vede.
-cfg.t2_fattori = [0.5 0.75 1.0 1.5 2.0];
+%
+% [MISURATO] 0.75x SOSTITUITO DAL LIMITE DI C1, 1.20x.
+% Il terzo punto era 0.75x, scelto a occhio fra 0.5x e 1x. Ora e' il limite
+% del cinematico, misurato da limite_velocita su sei fattori fra 1.0 e 1.5
+% con un criterio dichiarato prima di guardare i dati (tripode presente oltre
+% il 95% del tempo, rimbalzo del corpo sotto 10 mm, avanzamento positivo):
+%
+%   fattore   task     piedi   sotto 3   rimbalzo
+%     1.00   +116%      3.33     0.4%      3.2 mm
+%     1.10   +115%      3.23     2.6%      3.3 mm
+%     1.20   +112%      3.38     2.2%      3.4 mm    <- limite
+%     1.30   +107%      3.48     7.1%      9.4 mm       cede il tripode
+%     1.40    +99%      2.65    35.9%     19.7 mm
+%     1.50    +83%      2.47    34.3%     33.3 mm
+%
+% Il ginocchio e' netto fra 1.20x e 1.30x, e la condizione che cede per prima
+% e' il tripode: l'appoggio si perde PRIMA che il rimbalzo diventi visibile.
+% Spostare la soglia fra il 2% e il 15% non cambia il limite, quindi non e'
+% un numero scelto dalla soglia.
+%
+% Un punto a mezza velocita' e uno al limite dicono piu' di due punti bassi:
+% 0.5x e' l'altro regime di cedimento, 1.20x e' il bordo dell'inviluppo.
+cfg.t2_fattori = [0.5 1.0 1.20 1.5 2.0];
+
+% QUALI PUNTI SONO CONFRONTABILI E QUALI NO.
+% I primi tre sono dentro l'inviluppo operativo di C1 e sono i punti su cui
+% si confrontano C1, C2 e C3. Gli ultimi due sono FUORI: a 1.5x il robot
+% saltella (34% del tempo sotto tre piedi) e a 2.0x indietreggia.
+%
+% Vanno riportati, non scartati, ma con le metriche giuste: sotto3_frac e
+% corpoZ_pp, non err_vx_rms. A quelle velocita' l'errore non e' un errore di
+% inseguimento - i giunti eseguono la corsa comandata al 118% a tutte le
+% velocita' - e' il robot che non cammina. Chiamarlo errore di inseguimento
+% attribuirebbe a C1 un difetto che non ha e all'MPC un merito che non si e'
+% guadagnato.
+%
+% E' anche l'ipotesi da verificare su C2 e C3: se l'MPC cammina dove C1
+% rimbalza, il risultato del progetto e' che l'MPC ESTENDE L'INVILUPPO, con
+% la soglia di C1 misurata in anticipo invece che trovata a posteriori.
+cfg.t2_limite    = 1.20;              % [x] limite misurato di C1
+cfg.t2_confronto = [0.5 1.0 1.20];    % dentro l'inviluppo
+cfg.t2_fuori     = [1.5 2.0];         % fuori: casi non funzionanti
 
 %% ===== contatto e terreno =====
 % [TARATO] La rigidezza non e' una misura: e' un'assunzione sul terreno.

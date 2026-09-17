@@ -71,35 +71,56 @@ evalin('base','clear OVERRIDE_GAIT');
 evalin('base','init_gait');
 evalin('base', sprintf('evalc(''sim(''''%s'''',''''StopTime'''',''''0.2'''')'')', opt.mdl));
 
-tau_letto = NaN;
-try
-    if evalin('base','exist(''tau'',''var'')')
-        v = evalin('base','tau');
-        tau_letto = v(1);
-    end
-catch
+% [CORRETTO] SI VERIFICA IL FILTRO, NON LA VARIABILE.
+% La prima versione controllava solo che la variabile tau valesse quella
+% impostata. Passava - e lo sweep dava cinque volte gli STESSI numeri alla
+% quinta cifra, perche' sys_filter era costruito PRIMA dell'override: la
+% variabile cambiava e il filtro no. Controllare la variabile non dice nulla
+% sul filtro; qui si guarda il polo, che e' -1/tau.
+tau_letto = leggiBase('tau');
+polo      = poloFiltro();
+
+fprintf('  tau_filtro = %.4f   tau nel workspace = %.4f\n', tau_prova, tau_letto);
+if isnan(polo)
+    fprintf(2,'  polo del filtro: non leggibile (ne'' sys_filter ne'' a ne'' A)\n');
+else
+    fprintf('  polo del filtro = %.2f   atteso -1/tau = %.2f\n', polo, -1/tau_prova);
 end
 
-fprintf('  tau_filtro impostato a %.4f, l''InitFcn ha messo tau = %.4f\n', ...
-        tau_prova, tau_letto);
-if isnan(tau_letto) || abs(tau_letto - tau_prova) > 1e-9
+varOk   = ~isnan(tau_letto) && abs(tau_letto - tau_prova) < 1e-9;
+filtroOk = ~isnan(polo) && abs(polo - (-1/tau_prova)) < 0.01*abs(1/tau_prova);
+
+if ~(varOk && filtroOk)
     evalin('base','clear tau_filtro OVERRIDE_C2');
     evalin('base','init_gait');
-    error('prova_filtri:nonCollegato', ...
-      ['L''InitFcn NON legge tau_filtro: dopo la simulazione tau vale %.4f\n' ...
-       'invece di %.4f. Lo sweep sarebbe cieco - ogni cella girerebbe con\n' ...
-       'tau = 0.05 e la conclusione sarebbe l''opposto del vero.\n\n' ...
-       'Nelle proprieta'' del modello -> Callbacks -> InitFcn, la riga che\n' ...
-       'assegna tau deve diventare:\n' ...
-       '    if evalin(''base'',''exist(''''tau_filtro'''',''''var'''')'')\n' ...
-       '        tau = evalin(''base'',''tau_filtro'');\n' ...
-       '    else\n' ...
-       '        tau = 0.05;\n' ...
-       '    end\n' ...
-       'e deve stare PRIMA della riga che costruisce sys_filter.'], ...
-       tau_letto, tau_prova);
+    if varOk && ~filtroOk
+        error('prova_filtri:ordineSbagliato', ...
+          ['La variabile tau cambia (%.4f) ma il FILTRO no: il polo vale %.2f\n' ...
+           'invece di %.2f. L''override e'' stato messo DOPO la riga che\n' ...
+           'costruisce sys_filter, quindi il filtro usa ancora il valore\n' ...
+           'vecchio.\n\n' ...
+           'Nelle proprieta'' del modello -> Callbacks -> InitFcn, spostalo\n' ...
+           'PRIMA di tutte le righe che usano tau: quella che calcola a o A,\n' ...
+           'e quella che chiama ss(). L''ordine deve essere\n' ...
+           '    1. tau (con l''override)\n' ...
+           '    2. a = -1/tau  (o come si chiama)\n' ...
+           '    3. sys_filter = ss(A,B,C,D)\n\n' ...
+           'Lo sweep sarebbe cieco: darebbe cinque volte gli stessi numeri e\n' ...
+           'concluderebbe che i filtri non c''entrano.'], ...
+           tau_letto, polo, -1/tau_prova);
+    else
+        error('prova_filtri:nonCollegato', ...
+          ['L''InitFcn non legge tau_filtro: tau vale %.4f invece di %.4f.\n\n' ...
+           'Nelle proprieta'' del modello -> Callbacks -> InitFcn:\n' ...
+           '    if evalin(''base'',''exist(''''tau_filtro'''',''''var'''')'')\n' ...
+           '        tau = evalin(''base'',''tau_filtro'');\n' ...
+           '    else\n' ...
+           '        tau = 0.05;\n' ...
+           '    end\n' ...
+           'e PRIMA di ogni riga che usa tau.'], tau_letto, tau_prova);
+    end
 end
-fprintf('  collegamento OK\n\n');
+fprintf('  collegamento OK: la variabile e il polo del filtro concordano\n\n');
 
 %% ---- lo sweep ----
 P = table();
@@ -162,19 +183,31 @@ for iF = 1:numel(opt.fattori)
     fatt = opt.fattori(iF);
     s = P(P.fattore == fatt, :);
     if isempty(s), continue; end
-    [~, ix] = max(s.frazione_task);
+    % Indici, non maschere logiche: con tutti i valori a pari merito
+    % s.tau(maschera) e' un VETTORE, fprintf ricicla il formato e stampa
+    % righe incomprensibili. E' successo.
+    [fmin, imin] = min(s.frazione_task);
+    [fmax, imax] = max(s.frazione_task);
     fprintf('\n%.2fx: frazione del task da %+.0f%% (tau %.4f) a %+.0f%% (tau %.4f)\n', ...
-            fatt, 100*min(s.frazione_task), s.tau(s.frazione_task == min(s.frazione_task)), ...
-            100*max(s.frazione_task), s.tau(ix));
+            fatt, 100*fmin, s.tau(imin), 100*fmax, s.tau(imax));
+
+    % Cinque tau diversi che danno lo STESSO numero alla quinta cifra non
+    % sono un risultato: sono la prova che tau non arriva al filtro.
+    if numel(unique(round(s.frazione_task, 6))) == 1 && height(s) > 1
+        fprintf(2, ['  Tutte le celle danno lo stesso valore a 6 cifre: tau non\n' ...
+                    '  ha alcun effetto. Non e'' una conclusione fisica, e'' un\n' ...
+                    '  collegamento rotto. Ricontrolla l''ordine nell''InitFcn.\n']);
+        continue
+    end
 
     if fatt >= 1.9
-        if max(s.frazione_task) > 0.5 && min(s.frazione_task) < 0
+        if fmax > 0.5 && fmin < 0
             fprintf(['  RECUPERATA. Il fallimento a 2x era dei FILTRI, non del\n' ...
                      '  controllore. Va scritto in relazione: riportarlo come\n' ...
                      '  limite di C1 darebbe all''MPC un vantaggio che non ha.\n' ...
                      '  tau va portato a %.4f s per tutta la campagna, e la\n' ...
-                     '  scelta dichiarata insieme al suo effetto su 1x.\n'], s.tau(ix));
-        elseif max(s.frazione_task) < 0
+                     '  scelta dichiarata insieme al suo effetto su 1x.\n'], s.tau(imax));
+        elseif fmax < 0
             fprintf(['  NON recuperata da nessun tau: il robot cammina indietro\n' ...
                      '  comunque. Il limite e'' del controllore e il risultato\n' ...
                      '  regge. I filtri escono dalla lista dei sospetti.\n']);
@@ -185,7 +218,8 @@ for iF = 1:numel(opt.fattori)
                      '  dichiarato debole.\n']);
         end
     else
-        peggio = min(s.frazione_task) < 0.9 * s.frazione_task(s.tau == max(s.tau));
+        [~, iLento] = max(s.tau);   % la cella con il filtro piu' lento, il riferimento
+        peggio = fmin < 0.9 * s.frazione_task(iLento);
         if peggio
             fprintf(['  ATTENZIONE: abbassare tau peggiora anche 1x. Allora non\n' ...
                      '  e'' "tau troppo alto" ma "il banco e'' sensibile a tau", e\n' ...
@@ -213,6 +247,46 @@ fprintf('\n');
 end
 
 %% ================================================================
+function v = leggiBase(nome)
+%LEGGIBASE  Primo elemento di una variabile del base workspace, o NaN.
+v = NaN;
+try
+    if evalin('base', sprintf('exist(''%s'',''var'')', nome))
+        x = evalin('base', nome);
+        if ~isempty(x) && isnumeric(x), v = double(x(1)); end
+    end
+catch
+end
+end
+
+function p = poloFiltro()
+%POLOFILTRO  Il polo del filtro del primo ordine, cioe' -1/tau.
+%
+%   Si guarda il FILTRO, non la variabile tau: se l'override nell'InitFcn e'
+%   stato messo dopo la costruzione di sys_filter, la variabile cambia e il
+%   filtro resta quello di prima. Sintomo: lo sweep restituisce cinque volte
+%   gli stessi numeri alla quinta cifra.
+p = NaN;
+% 1. dall'oggetto ss, se c'e'
+try
+    if evalin('base','exist(''sys_filter'',''var'')')
+        A = evalin('base','sys_filter.A');
+        if ~isempty(A), p = double(A(1,1)); return; end
+    end
+catch
+end
+% 2. dalla matrice A costruita a mano
+for nome = {'A','a'}
+    try
+        if evalin('base', sprintf('exist(''%s'',''var'')', nome{1}))
+            M = evalin('base', nome{1});
+            if ~isempty(M) && isnumeric(M), p = double(M(1,1)); return; end
+        end
+    catch
+    end
+end
+end
+
 function v = ternario(c,a,b)
 if c, v = a; else, v = b; end
 end
