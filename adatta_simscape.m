@@ -417,6 +417,7 @@ if ~isempty(sched),      run.contact_sched = sched; end
 % marcata C1. Un'intera campagna puo' essere attribuita al controllore
 % sbagliato senza che nulla lo segnali.
 run.meta.controller = nomeControllore();
+run.meta.terreno    = terrenoAttivo();
 run.meta.task       = 'T1';
 run.meta.run        = 1;
 run.meta.condizione = 'nominale';
@@ -657,6 +658,29 @@ end
 %% ================================================================
 %  TO WORKSPACE
 %% ================================================================
+function terr = terrenoAttivo()
+%TERRENOATTIVO  Il terreno con cui ha girato il modello, dichiarato da
+%               applica_terreno nel base workspace.
+%
+%   Se manca, la run e' stata fatta su un terreno IGNOTO: probabilmente
+%   quello rimasto da una chiamata precedente. E' gia' successo - una
+%   campagna T2 partita su T5, con il gradino - e nei risultati non si
+%   vedeva. Qui si dichiara l'ignoranza invece di lasciarla implicita.
+terr = '?';
+try
+    if evalin('base','exist(''TERRENO_ATTIVO'',''var'')')
+        v = evalin('base','TERRENO_ATTIVO');
+        if ~isempty(v), terr = char(v); return; end
+    end
+catch
+end
+warning('adatta_simscape:terreno', ...
+    ['Terreno non dichiarato: TERRENO_ATTIVO non c''e'' nel base workspace.\n' ...
+     'La run ha girato sul terreno lasciato dall''ultima chiamata, che\n' ...
+     'potrebbe non essere quello del task. Lancia applica_terreno prima di\n' ...
+     'simulare. La colonna terreno restera'' ''?''.']);
+end
+
 function nome = nomeControllore()
 %NOMECONTROLLORE  C1 o C2, letto dallo stato con cui ha girato il modello.
 %

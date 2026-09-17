@@ -73,6 +73,9 @@ fprintf('  v nominale %.4f m/s   r_offset %.3f m\n', v_nom, cfg.r_offset);
 fprintf('  omega per la rotazione sul posto: %.4f rad/s\n', w_spin);
 fprintf('  durata %g s, controllore C1\n\n', dur);
 
+% Il terreno si fissa qui, non si eredita.
+applica_terreno('T3', false, mdl);
+
 D = table();
 
 for k = 1:size(casi,1)

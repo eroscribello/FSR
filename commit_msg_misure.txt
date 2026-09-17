@@ -1,0 +1,156 @@
+feat(misure): anello aperto vero, forze di contatto, e il terreno che non si eredita
+
+Tre difetti che rendevano i numeri inutilizzabili senza segnalarlo, piu' la
+taratura di T2 chiusa con un esito diverso da quello che cercava.
+
+L'INTERRUTTORE C1/C2 NON ESISTEVA
+I blocchi MATLAB Function2 e 3 implementano la ricerca del terreno di Arrigoni
+e sono nel percorso del comando, non nel logging: z1 e i flag di contatto
+entrano, z_lf..z_rr escono verso i sei blocchi gamba. Erano sempre attivi.
+
+La documentazione diceva che portare c2_soglia a infinito dava l'anello
+aperto. E' FALSO: con il flag di contatto sempre falso la ricerca entra nel suo
+ramo di DISCESA a ogni appoggio - cfg.z0 = 0.14 contro la soglia z_nom - tol =
+0.138 - e la zampa scende di 3 cm a 0.06 m/s. Il contrario dell'anello aperto.
+
+La logica esce dai due blocchi e va in ricerca_terreno.m, sul path: dentro un
+.slx binario era invisibile a git, scritta due volte, e con z_nominal = 0.14
+che duplicava cfg.z0 senza saperlo (ritarare z0 avrebbe sfasato la soglia in
+silenzio). I due blocchi sono ora una riga sola, come tripod_gait e leg_ik, con
+un sesto ingresso par alimentato da un Constant di valore c2_par.
+
+L'interruttore vero e' c2_par(1). init_gait accetta OVERRIDE_C2 per scegliere
+il controllore senza editare la configurazione, e adatta_simscape LEGGE
+l'etichetta del controllore da c2_par invece di scriverla a mano: era cablata a
+'C1', quindi una run fatta senza override girava in C2 e finiva in tabella
+marcata C1.
+
+LE FORZE DI CONTATTO NON SONO OTTENIBILI DAL MODELLO
+Verificato per tre vie, tutte chiuse:
+- il ramo Fleg/Fsum e' un abbozzo mai finito: i dodici From cercano le
+  etichette Force_sens_lf..rr e nel modello NESSUN Goto le produce. Un From
+  senza Goto e' risolto come costante, con tempo di campionamento infinito: da
+  qui l'unico campione che Fleg restituiva (Time [1x1], Data [1x6]) e un
+  errore muto di interp1 che non diceva quale segnale fosse;
+- il log di Simscape contiene 107 nodi, tutti giunti piu' il 6-DOF Joint;
+- LogSimulationData sui blocchi di contatto non si accende: Simulink risponde
+  "does not support logging".
+
+adatta_simscape le RICOSTRUISCE dalla penetrazione con la stessa legge
+costitutiva dichiarata dai blocchi (SmoothSpringDamper, contact_k, contact_c,
+contact_w). La quota del terreno non e' assunta ma ricavata imponendo che la
+somma delle sei forze valga in media il peso: un vincolo fisico, che assorbe lo
+sfasamento fra il frame della cinematica diretta e quello di Simscape.
+Verifica: forza totale 15.72 N contro 15.55 di peso (1.1%), penetrazione media
+4.08 mm contro 4.32 attesi da cfg.
+
+Da' Fz per zampa, quindi appoggio_medio, disp_carico, Fz_max_norm e il contatto
+per lo scivolamento. NON da' le componenti tangenziali. Va dichiarato in
+relazione, ed e' scritto in docs/piano_confronto.md.
+
+IL TERRENO SI EREDITAVA, E UNA CAMPAGNA T2 E' PARTITA SU T5
+Nessun runner impostava il terreno: usavano quello lasciato dalla chiamata
+precedente. Una taratura di T2 e' girata sul gradino di T5 e nulla nei
+risultati lo diceva - i numeri erano plausibili e sbagliati.
+
+Corretto su tre livelli, non uno:
+- i cinque runner chiamano applica_terreno con il loro task;
+- applica_terreno dichiara TERRENO_ATTIVO nel base workspace, una sola verita';
+- metriche ha una colonna 'terreno' in ogni riga, e adatta_simscape avvisa se
+  non e' dichiarato. L'errore diventa VISIBILE nei risultati, non solo evitato.
+
+L'IMBARDATA ERA MISURATA CON UN ANGOLO CHE SI AVVOLGE
+tasso_imbardata sostituisce (yaw(end)-yaw(1))/durata, che su una run da 15 s
+non puo' restituire nulla fuori da +-pi/15 = +-0.209 rad/s qualunque sia la
+rotazione vera. Cinque celle con comandi da 0.21 a 1.71 rad/s avevano dato
++0.124, -0.172, +0.062, -0.149, +0.059: tutti dentro quella banda con segni
+alterni. Sembrava un controllore senza autorita' che saturava.
+
+La misura buona e' run.w(:,3), la velocita' angolare del corpo dal log, che non
+si avvolge; l'angolo srotolato resta come CONTROLLO INCROCIATO e la funzione
+avvisa se le due stime divergono oltre il 20%.
+
+TARATURA DI T2: NON VA RITARATO, E H E' UN VINCOLO
+26 run in C1, z0 su due valori, H da 0.020 a 0.065, tre velocita'.
+
+z0 e' insensibile: fra 0.140 e 0.142 la dispersione del carico cambia dello
+0.2%.
+
+H ha un ottimo DEGENERE su terreno piano: tutte le metriche migliorano al
+calare di H fino al bordo della griglia, due volte di seguito. Il motivo si
+legge in appoggio_medio, che a 1x passa da 3.42 (H=0.035) a 3.64 (H=0.020)
+tendendo a 6: il minimo della dispersione si ottiene con i piedi che NON si
+alzano. Il criterio premiava l'andatura che non cammina.
+
+H e' un vincolo di franco, non un parametro libero: 45 mm di ostacolo in T5
+piu' penetrazione e oscillazione del corpo fanno ~55 mm, quindi cfg.H = 0.05
+resta e si dichiara come vincolo. Una sola taratura per tutte le velocita'.
+
+Il costo del franco, quantificato: a 1x il cost of transport passa da 1.43 con
+H=0.05 a 0.94 con H=0.02, cioe' il 34% di energia spesa a portare in giro una
+capacita' di scavalcamento che su piano non serve. Limite strutturale del
+cinematico, e un punto su cui l'MPC ha qualcosa da rivendicare.
+
+La cella 2x fallisce per INVERSIONE: frazione_task da -26% a -69% in tutte e
+sei le combinazioni, con contatto eccellente (3.46 piedi, dispersione 1.3%).
+Non e' perdita di appoggio e nessun valore di z0 o H la recupera. Resta un solo
+sospetto: sys_filter, tau = 0.05 s su uno swing che a 2x dura 250 ms.
+L'InitFcn ora legge tau_filtro dal workspace, e prova_filtri sweepa tau
+verificando PRIMA che il collegamento esista - senza quella verifica lo sweep
+sarebbe cieco e concluderebbe l'opposto del vero.
+
+C1 SCIVOLA, E SI VEDE NELLA VELOCITA'
+Tre misure indipendenti che concordano entro l'1.6%: il piede si sposta in
+avanti di 9.54 mm durante l'appoggio, l'avanzamento previsto 2*(S+slip) vale
+139 mm/ciclo, quello misurato 136.8. Il robot va il 14% piu' veloce del comando
+PERCHE' i piedi slittano: Dcorpo = Dpiede - D(piede nel frame corpo), e con
+D(piede nel frame corpo) = -S i due contributi si sommano.
+
+Il tripode comandato in posizione e' sovra-vincolato - tre piedi a terra
+impongono sei vincoli orizzontali su tre gradi di liberta' nel piano - quindi
+le zampe si contrastano e i piedi cedono. Conseguenza sulle metriche:
+err_vx_rms su T1 e T2 contiene questo scivolamento, non un errore di
+inseguimento, e va riportato accanto a slip_tot.
+
+ALTRE CORREZIONI
+- metriche: run.Fc era letta senza guardia in disp_carico, quindi una run
+  senza forze moriva invece di dare NaN come promette la sua intestazione;
+  lo scivolamento scarta gli appoggi piu' brevi di un quarto del nominale
+  (erano 23 tocchi spuri su 83 segmenti, e il moto di volo che li accompagna
+  falsava slip_tot); opt.frac_min e opt.durata_min_appoggio documentate.
+- esegui_misure: riga_fallita ricava le colonne da metriche invece di
+  elencarle a mano - l'elenco si era disallineato di tre colonne e la
+  concatenazione rompeva la campagna alla PRIMA run in errore; T2 espanso da
+  cfg.t2_fattori; riassumi raggruppa anche per condizione, altrimenti le
+  cinque velocita' collassavano in una riga di riepilogo.
+- run_vuoto: contact_sched dichiarato, era letto da metriche e assente dal
+  contratto.
+- phantomx_config: la riga cfg.terreno.task.T1 era stata inghiottita da un
+  commento e il campo non esisteva; il commento sull'interruttore C1/C2 era
+  falso; aggiunti i parametri della ricerca del terreno, che erano cablati
+  dentro i due blocchi, e cfg.t2_fattori come unica definizione di T2.
+- init_gait: OVERRIDE_C2, c2_par, e un default per ost_dz - i Rigid Transform
+  degli ostacoli leggono quell'espressione dal .slx salvato, quindi senza il
+  default il modello non compila per chi non ha lanciato applica_terreno.
+
+NUOVI STRUMENTI
+- ricerca_terreno.m   la logica di C2, fuori dal .slx e sotto git
+- abilita_log.m       risale la catena dei segnali, dry run di default
+- verifica_log.m      perche' un To Workspace non arriva nell'uscita
+- cerca_log.m         cerca un nodo nell'albero del log di Simscape
+- tasso_imbardata.m   imbardata dalla sorgente migliore, con controllo incrociato
+- taratura_T2.m       griglia di taratura con il criterio dichiarato
+- prova_filtri.m      i filtri spiegano il fallimento a 2x?
+- origine_beccheggio.m  offset o dondolio? Sono due difetti diversi
+- curva_imbardata.m, diagnosi_imbardata.m, applica_imbardata.m  T3
+- quota_terreno.m     quote del terreno dagli STL
+
+APERTI
+- T4: la rampa e' una lastra 4x4 m che condivide floor_dim col pavimento, a 8
+  gradi lo attraversa e sporge di 4 cm dove parte il robot. Serve un
+  rampa_dim proprio: una modifica a un parametro di blocco.
+- quota_terreno stampa le quote assolute nel frame dei Rigid Transform, il cui
+  z e' opposto a quello del mondo. Le differenze sono valide, gli assoluti no.
+- il beccheggio in marcia rettilinea: RMS dell'angolo, quindi offset e
+  dondolio si confondono. origine_beccheggio li separa, da lanciare.
+- due Data Store Write su j_c1_rr e j_thigh_rr senza ordine garantito.

@@ -68,6 +68,9 @@ fprintf('  omega di riferimento (passo nominale): %.4f rad/s\n', w_rif);
 fprintf('  comandi: %s rad/s\n', mat2str(omega,4));
 fprintf('  controllore C1, %g s per cella\n\n', dur);
 
+% Il terreno si fissa qui, non si eredita.
+applica_terreno('T3', false, mdl);
+
 %% ---- cella 0: la deriva ----
 fprintf('[deriva] comando nullo ... ');
 r0 = una_run(0, 0, cfg.S, mdl, dur, cfg);

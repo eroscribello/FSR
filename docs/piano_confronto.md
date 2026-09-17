@@ -305,6 +305,121 @@ numeri non saranno confrontabili fra loro.
 
 Non sono voci di piano, sono debiti noti. Elencati perché non si perdano.
 
+### Risultato chiuso: C1 scivola, e si vede nella velocità
+
+Misurato in C1 su T1, terreno piano, 10 s. Tre grandezze indipendenti che
+concordano entro l'1,6%:
+
+| grandezza | valore |
+|---|---|
+| spostamento del piede **in avanti** durante l'appoggio | +9,54 mm (media su 60 appoggi) |
+| avanzamento del corpo previsto: `2·(S + slip)` | 2·(60 + 9,54) = 139 mm/ciclo |
+| avanzamento misurato | 136,8 mm/ciclo |
+| velocità comandata vs misurata | 0,120 → 0,137 m/s, **+14%** |
+| dispersione del carico fra le sei zampe | 27% |
+
+La relazione è `Δcorpo = Δpiede − Δ(piede nel frame corpo)`, e con
+`Δ(piede nel frame corpo) = −S` i due contributi si **sommano**: un piede che
+striscia in avanti regala avanzamento. Il robot va più veloce di quanto gli si
+chieda *perché* i piedi slittano.
+
+**Interpretazione.** Il tripode comandato in posizione è sovra-vincolato: tre
+piedi a terra impongono sei vincoli orizzontali su tre gradi di libertà nel
+piano. Le zampe si contrastano, le forze interne crescono oltre l'attrito
+disponibile e i piedi cedono. Il controllore comanda posizioni e non ha modo di
+sapere che stanno slittando — è il limite strutturale che l'MPC, distribuendo
+le forze dentro il cono d'attrito, può rimuovere.
+
+**Perché è una misura e non un artefatto.** Le posizioni dei piedi vengono
+dalla cinematica diretta sugli angoli di giunto; se quella catena fosse
+sfasata, il conto sopra non chiuderebbe all'1,6%. La chiusura valida `pf`.
+
+**Conseguenza sulle metriche.** `err_vx_rms` confronta la velocità misurata con
+quella comandata: su T1 e T2 quel numero contiene il +14% di scivolamento, non
+un errore di inseguimento. Va riportato insieme a `slip_tot`, altrimenti si
+attribuisce al controllore un errore di velocità che è invece perdita di
+aderenza.
+
+### T2 non va ritarato: H è un vincolo, non un parametro libero
+
+Campagna di taratura in C1 su T1/T2, 26 run: `z0` su 0,140 e 0,142, `H` da
+0,020 a 0,065, velocità 0,5× 1,0× 2,0×.
+
+**`z0` è insensibile.** Fra 0,140 e 0,142 la dispersione del carico cambia dello
+0,2%. Resta 0,14.
+
+**`H` ha un ottimo degenere su terreno piano.** Tutte le metriche migliorano
+monotonicamente al calare di `H`, fino al bordo della griglia, due volte di
+seguito. Il motivo si legge in `appoggio_medio`, che a 1,0× passa da 3,42 con
+`H` = 0,035 a **3,64** con `H` = 0,020: tende a 6. Il minimo della dispersione
+del carico si ottiene con i piedi che **non si alzano**, strisciano, e il carico
+è perfettamente distribuito perché tutte e sei le zampe sono sempre a terra.
+Il criterio premiava l'andatura che non cammina.
+
+`H` serve a scavalcare. Su terreno piano non c'è niente da scavalcare, quindi
+il suo ottimo lì è zero per costruzione, e usare quel valore su T5/T6 farebbe
+inciampare il robot. Il valore si deriva dal requisito di franco:
+
+| vincolo | quota |
+|---|---|
+| penetrazione del contatto | 4,3 mm |
+| oscillazione verticale del corpo | 8,6 mm |
+| franco minimo su piano | ~15 mm |
+| ostacolo di T5 | 45 mm |
+| **franco minimo per T5/T6** | **~55 mm** |
+
+`cfg.H = 0,05` è quindi giustificato dai task accidentati, e va dichiarato come
+**vincolo di franco**, non come taratura. Una sola taratura per tutte le
+velocità e per tutti i task.
+
+**Il costo del franco, quantificato.** A 1,0× il cost of transport passa da
+1,43 con `H` = 0,05 a **0,94** con `H` = 0,02: il **34% di energia in più**
+speso a portare in giro una capacità di scavalcamento che su terreno piano non
+serve. È un limite strutturale del cinematico — l'altezza di volo è una
+costante dell'andatura e il controllore non sa che il terreno è piatto — e un
+punto su cui un MPC che pianifica sul terreno noto ha qualcosa da rivendicare.
+
+**La cella 2× fallisce per inversione, non per taratura.** In tutte e sei le
+combinazioni `frazione_task` è NEGATIVA (da −26% a −69%): il robot cammina
+indietro. E lo fa con contatto eccellente — 3,46 piedi a terra, dispersione
+dell'1,3% — quindi non è perdita di appoggio. Nessun valore di `z0` o `H` la
+recupera. Resta in piedi una sola ipotesi: i filtri `sys_filter`, `tau` = 0,05 s
+su uno swing che a 2× dura 250 ms. Da verificare rendendo `tau` sovrascrivibile
+dall'`InitFcn` e rilanciando la cella: se `frazione_task` torna positiva, il
+fallimento a 2× è del **banco di prova** e non del controllore, e va scritto,
+perché altrimenti si attribuisce all'MPC un vantaggio che non ha.
+
+### Come sono ottenute le forze di contatto
+
+Nel modello **non** sono disponibili, verificato per tre vie:
+
+- il ramo `Fleg`/`Fsum` è un abbozzo mai finito: i dodici `From` cercano le
+  etichette `Force_sens_lf..rr` e nel modello nessun `Goto` le produce. Un
+  `From` senza `Goto` è risolto come costante, da cui l'unico campione che
+  `Fleg` restituiva;
+- il log di Simscape contiene 107 nodi, tutti giunti più il 6-DOF Joint;
+- `LogSimulationData` sui blocchi di contatto non si può accendere: Simulink
+  risponde *«does not support logging»*.
+
+`adatta_simscape` le **ricostruisce** dalla penetrazione con la stessa legge
+costitutiva dichiarata dai blocchi (`SmoothSpringDamper`, `contact_k`,
+`contact_c`, `contact_w`):
+
+```
+delta = max(0, z_terreno − z_piede)
+Fz    = (k·delta + c·delta_punto) · rampa(delta/w)
+```
+
+La quota del terreno non è assunta ma **ricavata** imponendo che la somma delle
+sei forze valga in media il peso: un vincolo fisico, che assorbe lo sfasamento
+di qualche millimetro fra il frame della cinematica diretta e quello di
+Simscape. Verifica: forza totale 15,72 N contro 15,55 di peso, **1,1%**;
+penetrazione media 4,08 mm contro 4,32 attesi da `cfg`.
+
+Limiti da dichiarare: solo la componente **normale**, nessun attrito, quindi
+nessuna metrica tangenziale. E l'ipotesi quasi statica per la stima della
+quota, che `adatta_simscape` verifica a ogni run e segnala se cade.
+
 **Sul modello Simscape**
 
 - `body_z0 = 0.25 m` contro i `0.11 m` della derivazione geometrica: all'istante

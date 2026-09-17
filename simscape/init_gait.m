@@ -193,6 +193,18 @@ end
 % terreno entra nel suo ramo di DISCESA a ogni fase di appoggio e la zampa
 % scende di z_ext_max a v_search. L'interruttore vero e' c2_par(1), letto dai
 % due blocchi MATLAB Function tramite ricerca_terreno.
+%% ---- quota degli ostacoli ----
+% I sette Rigid Transform degli ostacoli leggono  floor_off + [0 0 ost_dz].
+% Quell'espressione e' SALVATA nel .slx, quindi il modello non compila se
+% ost_dz non esiste: chi apre il modello e simula senza aver lanciato
+% applica_terreno si trova un "undefined variable ost_dz".
+% Qui si garantisce che ci sia sempre. applica_terreno lo sovrascrive per
+% task - zero su terreno imperfetto, cfg.terreno.ost_dz su piano liscio - e
+% il default corrisponde allo stato con cui il modello e' salvato (liscio).
+if ~exist('ost_dz','var') || isempty(ost_dz)
+    ost_dz = cfg.terreno.ost_dz;
+end
+
 c2_par = [double(cfg.c2.attiva), ...
           cfg.c2.z_nom, ...
           cfg.c2.v_search, ...

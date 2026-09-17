@@ -223,6 +223,16 @@ if rampaOn
     end
 end
 
+% Il terreno attivo va DICHIARATO nel base workspace, non ricordato a mente.
+% adatta_simscape lo legge e lo mette in run.meta.terreno, quindi finisce in
+% una colonna di ogni riga di metriche.
+%
+% PERCHE': i runner delle campagne non impostavano il terreno, usavano quello
+% rimasto dalla chiamata precedente. Una campagna T2 e' partita su T5, con il
+% gradino, e nulla nei risultati lo avrebbe detto - i numeri sarebbero stati
+% plausibili e sbagliati. Con la colonna in tabella l'errore si vede subito.
+assignin('base', 'TERRENO_ATTIVO', task);
+
 info = struct('task',task, 'attivi',{vuoi}, 'etichette',{attive}, ...
               'mappa',mappe{1}, 'modello',mdl);
 

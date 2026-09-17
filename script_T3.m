@@ -45,7 +45,10 @@ T3 = table();
 t3_runs = {};
 t3_etichette = {};
 
-fprintf('\nT3: controllore %s\n', t3_nome_ctrl(t3_c2));
+% Il terreno si fissa qui, non si eredita.
+applica_terreno('T3', false, t3_mdl);
+
+fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_nome_ctrl(t3_c2));
 
 %% ================= 0. verifica del segno =================
 fprintf('\n===== T3: verifica del segno dell''imbardata =====\n');

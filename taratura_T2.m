@@ -36,6 +36,25 @@ function [best, G] = taratura_T2(opt)
 %   resta inammissibile per tutta la griglia, il sospetto e' quello e va
 %   verificato abbassando tau nell'InitFcn a mano.
 %
+% [ESITO, 17 settembre] SU TERRENO PIANO QUESTA TARATURA E' DEGENERE
+%   Il criterio qui sotto minimizza disp_carico, e su terreno piano il minimo
+%   si ottiene con H -> 0: i piedi non si alzano, strisciano, tutte e sei le
+%   zampe restano a terra e il carico e' perfettamente distribuito. Misurato:
+%   appoggio_medio passa da 3.42 (H=0.035) a 3.64 (H=0.020) tendendo a 6, e
+%   l'ottimo e' finito sul bordo della griglia due volte di seguito.
+%
+%   H e' un VINCOLO DI FRANCO, non un parametro libero: serve a scavalcare, e
+%   su terreno piano non c'e' niente da scavalcare. Il valore si deriva dal
+%   requisito - 45 mm di ostacolo in T5 piu' penetrazione e oscillazione del
+%   corpo, quindi ~55 mm - non dall'ottimizzazione. cfg.H = 0.05 resta, e si
+%   dichiara come vincolo.
+%
+%   QUESTA FUNZIONE RESTA UTILE per i task dove il franco vincola davvero
+%   (T5, T6) e per esplorare z0, che su piano e' risultato insensibile. Su
+%   T1/T2 serve a misurare il COSTO del franco, non a scegliere H: a 1x il
+%   CoT passa da 1.43 con H=0.05 a 0.94 con H=0.02, cioe' il 34% di energia
+%   spesa in capacita' di scavalcamento inutilizzata.
+%
 % IL CRITERIO, IN ORDINE LESSICOGRAFICO
 %   1. successo == true          (no ribaltamento, no arresto, frazione del
 %                                 task sopra opt.frac_min di metriche)
@@ -93,6 +112,13 @@ fprintf('  contatto  : NON toccato (k=%g, c=%g, w=%g)\n', ...
         cfg0.contact.k, cfg0.contact.c, cfg0.contact.w);
 fprintf('  modo      : %s\n', ternario(opt.c2,'C2','C1 anello aperto'));
 fprintf('  -> %d run\n\n', nTot);
+
+% IL TERRENO SI FISSA QUI, NON SI EREDITA.
+% Una campagna e' partita su T5, con il gradino, perche' il terreno era
+% quello lasciato dalla chiamata precedente: nessun numero lo diceva, e i
+% risultati erano plausibili e sbagliati. T2 e' un task su piano.
+applica_terreno('T2', false, opt.mdl);
+fprintf('  terreno fissato: T2 (piano liscio)\n\n');
 
 G = table();
 cronometro = tic;

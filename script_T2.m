@@ -37,6 +37,10 @@ T2 = table();
 t2_runs  = cell(1, numel(t2_fatt));
 t2_etichette = cell(1, numel(t2_fatt));
 
+% Il terreno si fissa qui: ereditarlo dalla chiamata precedente ha gia'
+% fatto girare una campagna T2 sul gradino di T5.
+applica_terreno('T2', false, t2_mdl);
+
 t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);
 if t2_haTar
     fprintf('\nT2: taratura per velocita'' da cfg.t2_taratura\n');
