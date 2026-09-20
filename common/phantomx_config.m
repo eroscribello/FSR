@@ -222,7 +222,7 @@ cfg.body_z0 = cfg.body_z0_geom - cfg.mass*cfg.g/(6*cfg.contact.k);
 % Rampa di T4. Nel modello sta a x = -2.5, cioe' dietro al robot che avanza
 % verso +x: qui viene riposizionata davanti, a meta' del percorso tipico
 % (il robot fa circa 1.4 m in 10 s).
-cfg.terreno.rampa_pos   = [0.6, 0, -0.5];   % [m]
+cfg.terreno.rampa_pos   = [-0.8, 0, 0.1];   % [m]
 cfg.terreno.rampa_gradi = 8;               % inclinazione attorno a +Y
 
 %% ===== terreno per task =====
