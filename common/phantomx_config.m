@@ -263,6 +263,20 @@ cfg.terreno.z_spento = +5;        % [m] quota di parcheggio
 % Transform e' opposta a quella del mondo, con -0.025 l'ostacolo sale.
 cfg.terreno.ost_dz = 0.025;       % [m]
 
+% [SCELTO 21/9] Spostamento degli ostacoli lungo il percorso, PER TASK.
+% L'ostacolo 1 sta a 16 cm dalla partenza: in T5 il robot ci arrivava a 1.2 s,
+% prima della fine del transitorio (2 s), senza un tratto di avvicinamento in
+% piano, e l'impatto si sovrapponeva all'avvio. Spostato di 0.5 m in avanti,
+% il robot ci arriva dopo circa 4.5 s di marcia regolare.
+% Per task e non globale: l'ostacolo 1 e' anche in T6, e spostarlo li'
+% cambierebbe la disposizione degli altri sei, che non e' stata verificata.
+% applica_terreno lo somma a floor_off a runtime: il .slx non si tocca.
+% [MISURATO] Segno NEGATIVO per andare avanti. Con +0.5 script_T5 ha dato
+% x_ingresso 0.079 m invece di 0.165, e il primo appoggio a 0.61 s invece di
+% 1.21: l'ostacolo si era AVVICINATO. Come la z, anche la x dei Rigid
+% Transform degli ostacoli e' opposta a quella del mondo.
+cfg.terreno.ost_dx.T5 = [-0.5 0 0 0 0 0 0];  % [m] uno per ostacolo
+
 cfg.terreno.task.T1 = [];         % piano
 cfg.terreno.task.T2 = [];         % piano, curva di velocita'
 cfg.terreno.task.T3 = [];         % piano, traiettoria curva

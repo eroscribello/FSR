@@ -34,6 +34,23 @@ end
 
 tutti_gli_elementi = fieldnames(cat);
 
+% I Rigid Transform NON seguono la convenzione di nomi dei solidi: il solido
+% Solid_Ostacolo1 e' appeso a "Rigid Transform10", non a
+% "Rigid Transform_Ostacolo1". Cercati per nome, set_param falliva e il catch
+% vuoto lo nascondeva: le sezioni 3 e 4 non hanno mai toccato gli ostacoli.
+% Si risolvono seguendo il collegamento del solido, che non dipende dai nomi.
+mancanti = {};
+for i = 1:numel(tutti_gli_elementi)
+    elem = tutti_gli_elementi{i};
+    cat.(elem).rt_path = rt_collegato(mdl, cat.(elem).solido);
+    if isempty(cat.(elem).rt_path)
+        % prova ancora il nome di catalogo, se un giorno il blocco verra' rinominato
+        if getSimulinkBlockHandle([mdl '/' cat.(elem).rt]) > 0
+            cat.(elem).rt_path = [mdl '/' cat.(elem).rt];
+        end
+    end
+end
+
 %% 2. Selezione elementi attivi per Task
 switch task
     case {'T1','T2','T3','T7'}, elementi_attivi = {'pavimento'};
@@ -48,11 +65,8 @@ end
 %% 3. Normalizzazione: Garantire Rigid Transform SEMPRE attivi
 for i = 1:numel(tutti_gli_elementi)
     elem = tutti_gli_elementi{i};
-    try
-        set_param([mdl '/' cat.(elem).rt], 'Commented', 'off');
-    catch
-        % Ignora se il nome del Rigid Transform segue una numerazione generica
-    end
+    if isempty(cat.(elem).rt_path), continue; end
+    set_param(cat.(elem).rt_path, 'Commented', 'off');
 end
 
 %% 4. Quota ostacoli e posizionamento rampa
@@ -60,20 +74,51 @@ lisciOn = ismember('pavimento', elementi_attivi);
 ost_dz  = ternario(lisciOn, getfield_default(cfg, 'terreno.ost_dz', 0.025), 0);
 assignin('base', 'ost_dz', ost_dz);
 
-% Offset quota per gli ostacoli
+% Offset per gli ostacoli: quota (ost_dz, uguale per tutti) e spostamento
+% lungo il percorso (cfg.terreno.ost_dx.<task>, uno per ostacolo e per task).
+% Lo spostamento e' scritto come NUMERO nell'espressione, non come nome di
+% variabile: se il modello venisse salvato dopo applica_terreno, un nome nuovo
+% nell'espressione lo renderebbe non compilabile senza quella variabile nel
+% workspace - e' gia' successo con ost_dz.
+ost_dx = zeros(1,7);
+if isfield(cfg,'terreno') && isfield(cfg.terreno,'ost_dx') && isfield(cfg.terreno.ost_dx, task)
+    ost_dx(1:numel(cfg.terreno.ost_dx.(task))) = cfg.terreno.ost_dx.(task);
+end
 for k = 1:7
     elem = sprintf('ostacolo%d', k);
+    rt_path = cat.(elem).rt_path;
+    if isempty(rt_path)
+        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.(elem).solido); %#ok<AGROW>
+        continue
+    end
     try
-        rt_path = [mdl '/' cat.(elem).rt];
-        if ost_dz == 0
+        if ost_dz == 0 && ost_dx(k) == 0
             set_param(rt_path, 'TranslationCartesianOffset', 'floor_off');
-        else
+        elseif ost_dx(k) == 0
             set_param(rt_path, 'TranslationCartesianOffset', 'floor_off(:).'' + [0 0 ost_dz]');
+        else
+            set_param(rt_path, 'TranslationCartesianOffset', ...
+                sprintf('floor_off(:).'' + [%.6g 0 ost_dz]', ost_dx(k)));
         end
-    catch
+    catch ME
+        mancanti{end+1} = sprintf('%s (%s): %s', cat.(elem).solido, rt_path, ME.message); %#ok<AGROW>
+    end
+end
+if verbose
+    if any(ost_dx), fprintf('  ostacoli spostati in x: %s m\n', mat2str(ost_dx)); end
+    for i = 1:numel(elementi_attivi)
+        e = elementi_attivi{i};
+        fprintf('  %-18s -> %s\n', cat.(e).solido, ternario(isempty(cat.(e).rt_path), ...
+                '(nessun Rigid Transform collegato)', strrep(cat.(e).rt_path, newline, ' ')));
     end
 end
 
+% [LASCIATA COM'E', DA DECIDERE COL COLLEGA] Anche questa sezione cerca il
+% Rigid Transform per NOME, e fallisce in silenzio come facevano le sezioni 3
+% e 4: la posa da cfg (rampa_pos, rampa_gradi) non e' mai stata applicata, e
+% la rampa sta dove la mette il .slx salvato. Non la si aggancia a
+% rt_collegato di proposito: attivarla ora sposterebbe la rampa nella posa di
+% cfg, mai verificata - e rampa_pos = [-0.8 0 0.1] e' dietro il robot.
 % Posa della Rampa (se attiva)
 if ismember('rampa', elementi_attivi) && isfield(cfg, 'terreno')
     try
@@ -113,6 +158,25 @@ for i = 1:numel(tutti_gli_elementi)
     end
 end
 
+%% 5b. Cosa non si e' potuto applicare: si dice SEMPRE, non solo con verbose
+% Uno spostamento richiesto e non applicato su un elemento ATTIVO e' un errore:
+% la campagna girerebbe su un terreno diverso da quello dichiarato, e il
+% terreno "ereditato" e' gia' costato una campagna. Per gli elementi spenti
+% basta un avviso.
+if ~isempty(mancanti)
+    attivi_mancanti = false;
+    for i = 1:numel(elementi_attivi)
+        attivi_mancanti = attivi_mancanti || ...
+            any(contains(mancanti, cat.(elementi_attivi{i}).solido));
+    end
+    msg = sprintf('applica_terreno(%s): non applicato a\n  %s', task, strjoin(mancanti, '\n  '));
+    if attivi_mancanti && any(ost_dx)
+        error('applica_terreno:mancanti', '%s', msg);
+    else
+        warning('applica_terreno:mancanti', '%s', msg);
+    end
+end
+
 %% 6. Salvataggio stato nel Base Workspace
 assignin('base', 'TERRENO_ATTIVO', task);
 info = struct('task', task, 'attivi', {elementi_attivi}, 'modello', mdl);
@@ -137,4 +201,30 @@ function val = getfield_default(s, fieldpath, default_val)
     catch
         val = default_val;
     end
+end
+
+function rt = rt_collegato(mdl, solido)
+%RT_COLLEGATO  Il Rigid Transform collegato direttamente al solido, o ''.
+rt  = '';
+sol = [mdl '/' solido];
+if getSimulinkBlockHandle(sol) < 0, return; end
+hs = get_param(sol, 'Handle');
+ph = get_param(sol, 'PortHandles');
+for p = [ph.LConn ph.RConn]
+    l = get_param(p, 'Line');
+    if l <= 0, continue; end
+    h = [get_param(l,'SrcBlockHandle'), reshape(get_param(l,'DstBlockHandle'),1,[])];
+    for b = h(h > 0 & h ~= hs)
+        % I nomi lunghi Simulink li spezza su due righe, e l'a capo resta DENTRO
+        % il nome: il blocco si chiama "Rigid<a capo>Transform10", e anche il
+        % ReferenceBlock ha gli a capo. Confrontato con 'Rigid Transform' non
+        % corrispondeva mai. Si normalizzano gli spazi prima di confrontare.
+        ref = regexprep(get_param(b, 'ReferenceBlock'), '\s+', ' ');
+        nm  = regexprep(get_param(b, 'Name'),           '\s+', ' ');
+        if contains(ref, 'Rigid Transform') || startsWith(nm, 'Rigid Transform')
+            rt = getfullname(b);
+            return
+        end
+    end
+end
 end

@@ -1,4 +1,4 @@
-feat(misure): forze dai sensori, T2 rifatto, T3 con C1 misurato
+feat(misure): forze dai sensori, T2 rifatto, T3 e T5 chiusi
 
 FORZE DI CONTATTO DAI SENSORI
 adatta_simscape legge ora Fleg, i sensori aggiunti nel modello il 17/9.
@@ -51,6 +51,23 @@ a segno = -1: in sessione pulita faceva girare il robot al contrario, ed e'
 tornato a +1, il valore geometrico. script_T3 controlla ora il modulo prima
 del segno, e diagnosi_imbardata guarda il segno prima della linearita'.
 
+T5: SULL'OSTACOLO C2 DIMEZZA IL ROLLIO E ANNULLA LA DERIVA
+script_T5 nuovo. Escursione di rollio 8.2 -> 3.9 gradi, beccheggio 8.6 -> 6.9,
+corpo in z 60 -> 34 mm; C1 esce girato di 10 gradi e spostato di 25 cm, C2
+dritto. Prezzo: tau_max di C2 20 N*m, 13 volte il datasheet AX-12A - il banco
+con attuatori ideali lo concede, un robot vero no. Una run per controllore.
+Il passaggio si riconosce da un piede fermo e piu' alto del pavimento, non dai
+sensori: i sensori vedono solo il pavimento (chiudono al ~80% del peso in T5),
+quindi su T4-T6 le colonne di contatto vanno a NaN.
+
+applica_terreno: RIGID TRANSFORM CERCATI PER NOME, MAI TROVATI
+Nel modello si chiamano "Rigid<a capo>Transform10": set_param falliva dentro
+un catch vuoto, e la posa degli ostacoli non e' mai stata applicata dalla
+riscrittura. Ora il blocco si trova dal collegamento del solido, e i
+fallimenti si segnalano sempre. cfg.terreno.ost_dx.T5 sposta l'ostacolo 1 di
+0.5 m in avanti (segno negativo: x dei Rigid Transform opposta al mondo).
+La rampa ha lo stesso difetto ed e' lasciata com'e': da decidere prima di T4.
+
 .gitignore: IL MOTIVO PER CUI LE CACHE TORNAVANO
 Nove pattern avevano il commento sulla stessa riga ("slprj/   # cache ...").
 In .gitignore il # e' un commento solo a inizio riga: il pattern diventava
@@ -72,4 +89,5 @@ APERTI
   origine_beccheggio da lanciare.
 - ost_dz = 0.025 e ostacoli 4-7 in T6 col nuovo pavimento unico: a occhio.
 - rampa_pos [-0.8 0 0.1] contro il commento "davanti al robot".
-- applica_terreno: blocchi mancanti segnalati solo con verbose = true.
+- T4: la posa della rampa da cfg non e' mai stata applicata.
+- sensori di forza: aggiungere i contatti di ostacoli e rampa a Fleg.

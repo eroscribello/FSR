@@ -279,7 +279,7 @@ statico ridotto da 0,9 a 0,4.
 | **T2** | piano, rettilineo, **cinque velocità** | liscio | sull'avanzamento **no**, su energia e distacchi **sì** (§3) | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
 | **T3** | traiettoria curva, imbardata costante | liscio | poco: C2 +3 punti d'imbardata, stessi costi di T2 (§9) | C1 realizza il **15%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
 | **T4** | rampa, salita e discesa | liscio + rampa | **sì** | scenario del paper: terreno noto, corpo da tenere orizzontale |
-| **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** | scenario del paper: terreno **ignoto** |
+| **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** — misurato: rollio −52%, deriva annullata (§9) | scenario del paper: terreno **ignoto** |
 | **T6** | terreno irregolare, ostacoli multipli | imperfetto + 7 ostacoli | **sì** | stress test, corrisponde alla loro fig. 19b |
 | **T7** | disturbo impulsivo laterale | liscio | parziale | recupero dopo perturbazione |
 
@@ -570,6 +570,68 @@ scritto.
 
 **T3 è chiuso**, su C1 e C2. Resta aperta per entrambi i task solo l'origine
 del `pitch_rms` di C2 (offset o oscillazione), che `origine_beccheggio` separa.
+
+### [MISURATO] T5: sull'ostacolo C2 dimezza il rollio e annulla la deriva
+
+Ostacolo 1, ~30 mm, spostato 0.5 m in avanti rispetto al `.slx` (vedi sotto),
+velocità nominale, 20 s. `script_T5`, una run per controllore.
+
+| | C1 | C2 | |
+|---|---|---|---|
+| escursione di rollio | 8.2° | **3.9°** | −52% |
+| escursione di beccheggio | 8.6° | **6.9°** | −20% |
+| corpo in z sull'ostacolo (pp) | 60 mm | **34 mm** | −44% |
+| deviazione laterale massima | 0.25 m | **0.009 m** | |
+| imbardata finale | −9.8° | **−0.03°** | |
+| tempo sull'ostacolo | 11.2 s | 7.7 s | |
+| frazione del task | 104% | 111% | |
+| `tau_max` | 6.7 N·m | **20.0 N·m** | |
+| `potenza_max` | 50 W | 166 W | |
+| `cot` | 2.97 | 3.31 | +11% |
+
+È il primo task in cui la ricerca del terreno fa quello per cui esiste. C1
+esce dall'ostacolo girato di 10° e spostato di 25 cm di lato, e oscilla per
+altri cinque secondi; C2 esce dritto e torna subito all'assetto di prima.
+
+**Il prezzo va scritto accanto al guadagno.** `tau_max` di C2 arriva a
+20 N·m, **13 volte** il datasheet dell'AX-12A (1.5 N·m). Il banco ha attuatori
+ideali e lo concede; un robot vero saturerebbe proprio dove C2 si guadagna il
+vantaggio. Formulazione per la relazione: *C2 dimezza il rollio e annulla la
+deriva sull'ostacolo; su attuatori reali il vantaggio è da verificare.* È anche
+un argomento per l'MPC, che può mettere i limiti di coppia nel problema.
+
+**Come si misura** (dettagli in testa a `script_T5.m`):
+
+- il passaggio si riconosce da un piede **fermo nel mondo** e più alto del
+  pavimento di 15 mm, non dai sensori di forza — che vedono solo il pavimento
+  (chiudono al 79–83% del peso in T5), quindi le colonne di contatto sono a
+  `NaN`;
+- l'assetto è un'**escursione** rispetto alla media in piano, presa fuori dalla
+  finestra: così l'offset di −2° di C2 non lo penalizza né lo favorisce.
+
+**Limiti:** una run per controllore, quindi nessuna stima di variabilità; e le
+finestre non coincidono (C2 riconosciuto sull'ostacolo a 0.61 m, C1 a 0.74 m).
+Le escursioni sono massimi, e la finestra di C1 è più lunga per le oscillazioni
+dopo la discesa, che sono comportamento suo: il confronto non sfavorisce C2.
+
+**Lo spostamento dell'ostacolo.** Nel `.slx` l'ostacolo 1 stava a 16 cm dalla
+partenza: il robot ci arrivava a 1.2 s, prima della fine del transitorio.
+`cfg.terreno.ost_dx.T5 = [-0.5 0 ...]` lo sposta di 0.5 m in avanti a runtime,
+senza toccare il modello; ora il robot ci arriva a ~5 s. Il segno è negativo
+perché i Rigid Transform degli ostacoli hanno x e z opposte al mondo (catena
+del pavimento ruotata di 180° attorno a Y) — misurato: con +0.5 l'ostacolo si
+avvicinava. Le escursioni di C1 non cambiano con la posizione (8.0°/8.7° prima,
+8.2°/8.6° dopo).
+
+**Un difetto trovato per strada.** La riscrittura di `applica_terreno` cercava
+i Rigid Transform per nome (`Rigid Transform_Ostacolo1`), ma nel modello si
+chiamano `Rigid⏎Transform10` — con un a capo dentro il nome. `set_param`
+falliva e un `catch` vuoto lo nascondeva: le sezioni sulla posa degli ostacoli
+non hanno mai applicato niente. Ora il blocco si trova seguendo il collegamento
+del solido, e ogni fallimento viene segnalato anche senza `verbose`. **La
+rampa ha lo stesso difetto ed è stata lasciata com'è di proposito**: la posa
+di `cfg` non è mai stata applicata, e agganciarla sposterebbe la rampa in una
+posizione mai verificata. Da decidere prima di T4.
 
 ### Come sono ottenute le forze di contatto
 
