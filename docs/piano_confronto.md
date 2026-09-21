@@ -280,7 +280,7 @@ statico ridotto da 0,9 a 0,4.
 | **T3** | traiettoria curva, imbardata costante | liscio | poco: C2 +3 punti d'imbardata, stessi costi di T2 (§9) | C1 realizza il **15%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
 | **T4** | rampa, salita e discesa | liscio + rampa | **sì** | scenario del paper: terreno noto, corpo da tenere orizzontale |
 | **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** — misurato: rollio −52%, deriva annullata (§9) | scenario del paper: terreno **ignoto** |
-| **T6** | terreno irregolare, ostacoli multipli | imperfetto + 7 ostacoli | **sì** | stress test, corrisponde alla loro fig. 19b |
+| **T6** | terreno irregolare, ostacoli multipli | pavimento + 7 ostacoli | **sì** — misurato: beccheggio 45° → 16°, C1 oltre soglia (§9) | stress test, corrisponde alla loro fig. 19b |
 | **T7** | disturbo impulsivo laterale | liscio | parziale | recupero dopo perturbazione |
 
 Su terreno piano la retroazione del paper **non dovrebbe** intervenire, e
@@ -632,6 +632,52 @@ del solido, e ogni fallimento viene segnalato anche senza `verbose`. **La
 rampa ha lo stesso difetto ed è stata lasciata com'è di proposito**: la posa
 di `cfg` non è mai stata applicata, e agganciarla sposterebbe la rampa in una
 posizione mai verificata. Da decidere prima di T4.
+
+### [MISURATO] T6: C1 supera la soglia di assetto, C2 no
+
+Pavimento + sette ostacoli, disposizione del modello (nessuno spostamento),
+velocità nominale, 30 s. `script_T6`, cioè `script_T5` con lo stesso metodo;
+una run per controllore.
+
+| | C1 | C2 | |
+|---|---|---|---|
+| escursione di beccheggio | **45.1°** | **16.0°** | −65% |
+| escursione di rollio | 30.9° | 8.3° | −73% |
+| corpo in z sugli ostacoli (pp) | 185 mm | 119 mm | |
+| deviazione laterale massima | 0.52 m | 0.19 m | |
+| imbardata finale | +18.7° | −4.5° | |
+| distanza in 30 s | 3.21 m | 3.68 m | |
+| frazione del task | 88% | 102% | |
+| appoggi sugli ostacoli | 34 | 66 | |
+| esito | `ribaltamento` | superato | |
+| `tau_max` | 7.0 N·m | **26.5 N·m** | |
+| `potenza_max` | 66 W | 387 W | |
+| `cot` | 3.93 | 5.30 | +35% |
+
+**«Ribaltamento» per C1 è la soglia, non una caduta.** `metriche` lo dichiara
+quando rollio o beccheggio superano i 30° anche per un istante; C1 arriva a
+45° di beccheggio scendendo dalla «scala» e in simulazione si riprende. La
+soglia è stata dichiarata prima delle misure e resta: 45° su un robot vero con
+gli AX-12A è quasi certamente una caduta. Da scrivere così: *C1 supera la
+soglia di assetto di 30° e in simulazione si riprende.*
+
+**C1 attraversa meno terreno.** Scendendo dalla scala C1 ruota e sull'ultimo
+ostacolo (un gradino a sinistra, due a destra) passa solo su quello di
+sinistra — osservato in animazione. C2 fa 66 appoggi sugli ostacoli contro 34,
+e finisce il campo quasi dritto. Quindi su T6 l'assetto va letto **insieme** a
+deviazione e imbardata: C2 ha escursioni molto minori pur affrontando più
+terreno, e questo rafforza il risultato invece di indebolirlo.
+
+**Il prezzo cresce col terreno.** `tau_max` di C2 è 26.5 N·m, **18 volte** il
+datasheet dell'AX-12A (in T5 era 13 volte, 20 N·m); il cost of transport sale
+del 35%. Come in T5: il banco ha attuatori ideali, un robot vero saturerebbe
+proprio dove C2 si guadagna il vantaggio.
+
+**Limiti.** Una run per controllore. I sensori di forza chiudono al 63% (C1) e
+al 48% (C2) del peso — C2 passa più tempo sugli ostacoli, che i sensori non
+vedono — quindi le colonne di contatto sono a `NaN`. Il controllo a occhio
+sugli ostacoli 4–7 (posati sui rilievi del vecchio pavimento imperfetto) non
+ha mostrato ostacoli sospesi.
 
 ### Come sono ottenute le forze di contatto
 

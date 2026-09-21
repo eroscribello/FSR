@@ -1,4 +1,4 @@
-feat(misure): forze dai sensori, T2 rifatto, T3 e T5 chiusi
+feat(misure): forze dai sensori, T2 rifatto, T3 T5 T6 chiusi
 
 FORZE DI CONTATTO DAI SENSORI
 adatta_simscape legge ora Fleg, i sensori aggiunti nel modello il 17/9.
@@ -60,6 +60,14 @@ Il passaggio si riconosce da un piede fermo e piu' alto del pavimento, non dai
 sensori: i sensori vedono solo il pavimento (chiudono al ~80% del peso in T5),
 quindi su T4-T6 le colonne di contatto vanno a NaN.
 
+T6: C1 SUPERA LA SOGLIA DI ASSETTO, C2 NO
+script_T6 = script_T5 applicato ai sette ostacoli. Beccheggio 45 -> 16 gradi,
+rollio 31 -> 8; C1 finisce "ribaltamento" per soglia (30 gradi), non per
+caduta: in simulazione si riprende. C1 attraversa anche meno terreno (ruota
+scendendo dalla scala e salta due gradini dell'ultimo ostacolo); C2 fa il
+doppio degli appoggi sugli ostacoli e finisce quasi dritto. Prezzo: tau_max di
+C2 26.5 N*m, 18 volte il datasheet; cot +35%. Una run per controllore.
+
 applica_terreno: RIGID TRANSFORM CERCATI PER NOME, MAI TROVATI
 Nel modello si chiamano "Rigid<a capo>Transform10": set_param falliva dentro
 un catch vuoto, e la posa degli ostacoli non e' mai stata applicata dalla
@@ -87,7 +95,6 @@ DOCUMENTAZIONE
 APERTI
 - pitch_rms di C2 ~0.03 rad quasi costante: offset o oscillazione?
   origine_beccheggio da lanciare.
-- ost_dz = 0.025 e ostacoli 4-7 in T6 col nuovo pavimento unico: a occhio.
 - rampa_pos [-0.8 0 0.1] contro il commento "davanti al robot".
 - T4: la posa della rampa da cfg non e' mai stata applicata.
 - sensori di forza: aggiungere i contatti di ostacoli e rampa a Fleg.
