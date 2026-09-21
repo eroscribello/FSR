@@ -1,0 +1,75 @@
+feat(misure): forze dai sensori, T2 rifatto, T3 con C1 misurato
+
+FORZE DI CONTATTO DAI SENSORI
+adatta_simscape legge ora Fleg, i sensori aggiunti nel modello il 17/9.
+Validazione a 1.0x: forza verticale media 15.55 N su 15.55 di peso, 0.0%.
+E' una verifica forte, perche' nessuno impone il vincolo; la ricostruzione
+dalla penetrazione chiudeva sul peso in parte per costruzione (1.1%).
+
+Il moto e' identico bit per bit fra le due fonti (frazione_task a 1x uguale
+all'ottava cifra): e' cambiata solo la misura del contatto. Con i sensori il
+contatto e' piu' severo - C1 a 1x sotto tre piedi l'11.7% del tempo contro
+lo 0.4% ricostruito - quindi CSV con fonti diverse non si confrontano sulle
+colonne di contatto. La colonna note dice quale fonte e' stata usata.
+
+T2 RIFATTO CON I SENSORI, E UNA CONCLUSIONE RITIRATA
+results/T2_C1.csv e T2_C2.csv rifatti. Avevo scritto che C2 peggiora il
+contatto a tutte le velocita': con i sensori e' peggio solo a 1x, meglio a
+0.5x e 1.2x. Quello che resta vale su moto ed energia, che non dipendono
+dalla fonte: con C2 il corpo sta 5-7 mm piu' in alto, il cost of transport
+cresce fino al doppio a 0.5x, i distacchi passano da 38 a 155. C2 sposta il
+costo in energia e distacchi, non in piedi a terra.
+
+1.20x NON E' PIU' "IL LIMITE DI C1"
+La condizione sul tripode (sotto3_frac < 5%) era tarata sulle forze
+ricostruite: con i sensori boccia anche il nominale (11.7% a 1x), quindi non
+si trasferisce. Riscalarla sul nominale dopo aver visto i dati vorrebbe dire
+scegliere il limite. Resta il criterio sul moto del corpo, dichiarato prima e
+indipendente dalla fonte: 1.20x e' l'ultima cella con rimbalzo stabile
+(3.4 mm, contro 9.4 a 1.3x e 19.7 a 1.4x). In relazione due inviluppi: moto
+del corpo fino a 1.20x, contatto misurato al meglio a 1x.
+
+T3 CON C1: IL 15% DELL'IMBARDATA COMANDATA
++0.1 rad/s -> +0.0147, -0.1 -> -0.0153, asimmetria 3.9%, corpo orizzontale,
+imbardata parassita 5e-6. Rotazione sul posto 56% (limite di aderenza, del
+metodo); arco 15-24% (limite della nostra implementazione: una sola lunghezza
+di passo per sei zampe, da dichiarare nel confronto con C3).
+
+T3 CON C2: CHIUSO
+17.2% / 18.3%, contro 14.7% / 15.3% di C1: leggermente di piu', nello stesso
+senso nei due versi, ma da due run. Piu' solido: le firme di C2 misurate in T2
+ricompaiono in T3 con gli stessi valori - corpo +5.6 mm, cot +14.5%, pitch_rms
+~0.035 rad. Stesso meccanismo in due task diversi.
+Da dichiarare: con C2 tau_max arriva a 11.4 N*m (10.4 in T2) contro 1.5 del
+datasheet AX-12A; picchi brevi (1.3% del tempo in saturazione), ma il banco con
+attuatori ideali li concede e il robot vero no.
+
+Tutte le misure d'imbardata precedenti sono da scartare: erano prese in una
+sessione con stato residuo nel workspace, con il robot a 0.455 piedi a terra
+e 4 gradi di beccheggio. Su quelle misure applica_imbardata era stato portato
+a segno = -1: in sessione pulita faceva girare il robot al contrario, ed e'
+tornato a +1, il valore geometrico. script_T3 controlla ora il modulo prima
+del segno, e diagnosi_imbardata guarda il segno prima della linearita'.
+
+.gitignore: IL MOTIVO PER CUI LE CACHE TORNAVANO
+Nove pattern avevano il commento sulla stessa riga ("slprj/   # cache ...").
+In .gitignore il # e' un commento solo a inizio riga: il pattern diventava
+l'intera riga, commento compreso, e non corrispondeva a niente. slprj/,
+*.slxc e i backup *_backup_*.slx non sono mai stati ignorati. Commenti
+spostati sulla riga sopra.
+
+DOCUMENTAZIONE
+- README: ogni campagna parte da clear all; bdclose all; startup_phantomx.
+  Fonte delle forze, colonne di contatto aggiornate, 1.20x rinominato.
+- piano_confronto: confronto C1/C2 coi sensori, sezione forze riscritta,
+  sezione T3 nuova, causa del 2x chiusa, sys_filter chiuso.
+- phantomx_config: tabella di T2 coi due inviluppi.
+- archivio/README: mappa_contatti e quota_terreno non piu' chiamati dopo la
+  riscrittura di applica_terreno, archiviati.
+
+APERTI
+- pitch_rms di C2 ~0.03 rad quasi costante: offset o oscillazione?
+  origine_beccheggio da lanciare.
+- ost_dz = 0.025 e ostacoli 4-7 in T6 col nuovo pavimento unico: a occhio.
+- rampa_pos [-0.8 0 0.1] contro il commento "davanti al robot".
+- applica_terreno: blocchi mancanti segnalati solo con verbose = true.

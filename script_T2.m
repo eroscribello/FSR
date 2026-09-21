@@ -32,7 +32,7 @@ t2_cfg    = phantomx_config();
 t2_mdl    = 'phantomx_sim_zero';
 t2_fatt   = t2_cfg.t2_fattori;
 t2_nCicli = 10;
-t2_c2     = true;          % false = C1, anello aperto. true = C2.
+t2_c2     = false;          % false = C1, anello aperto. true = C2.
 T2 = table();
 t2_runs  = cell(1, numel(t2_fatt));
 t2_etichette = cell(1, numel(t2_fatt));

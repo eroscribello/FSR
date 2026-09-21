@@ -65,12 +65,23 @@ I risultati vanno in `results/`, un CSV per task e controllore:
 da git — sono il risultato, non un artefatto — mentre le run grezze (`.mat`) e
 le figure di lavoro no.
 
+**Ogni campagna parte da una sessione pulita:**
+
+```matlab
+clear all; bdclose all; startup_phantomx
+```
+
+`clear all`, non `clear`: toglie anche le variabili persistenti. `init_gait`
+legge dal base workspace `OVERRIDE_GAIT`, `OVERRIDE_C2`, `FORZA_STATICO`, e
+quello che resta lì da run precedenti cambia il comportamento senza lasciare
+traccia nel codice. È successo: una batteria di misure d'imbardata è stata
+presa su un robot con mezzo piede a terra e 4° di beccheggio, e buttata. Se il
+prompt è `K>>`, MATLAB è fermo in debug: prima `dbquit`.
+
 ### T2 — curva di velocità
 
 ```matlab
-clear
-startup_phantomx
-init_gait
+clear all; bdclose all; startup_phantomx
 script_T2
 ```
 
@@ -96,7 +107,7 @@ sovrascrivono. L'interruttore vero è `c2_par(1)`, che `init_gait` assembla da
 |---|---|
 | `0.5x` | bassa velocità |
 | `1.0x` | nominale |
-| `1.20x` | **limite misurato di C1** (`cfg.t2_limite`) |
+| `1.20x` | **ultima cella con moto del corpo stabile** (`cfg.t2_limite`) — non «limite di C1», vedi sotto |
 | `1.5x` | fuori inviluppo — il robot saltella |
 | `2.0x` | fuori inviluppo — il robot indietreggia |
 
@@ -106,12 +117,32 @@ Le ultime due **falliscono per costruzione**: `frazione_task` negativa a 2× non
 comandata (escursione del piede 118% di `S` a tutte le velocità), quindi non è
 un errore di inseguimento — è il robot che non cammina.
 
-**Le due colonne che dicono *perché* una cella fallisce:**
+**Perché 1.20× non si chiama «limite».** Il criterio aveva una condizione sul
+tripode (`sotto3_frac < 5%`) tarata sulle forze *ricostruite*. Con i sensori,
+che sono la fonte attuale, la stessa soglia boccia anche il nominale (11.7% a
+1.0×), quindi non si trasferisce. Resta il criterio sul moto del corpo, che non
+dipende dalla fonte delle forze: rimbalzo 3.4 mm a 1.20×, 9.4 a 1.30×, 19.7 a
+1.40×. In relazione vanno riportati entrambi gli inviluppi — dettagli in
+`common/phantomx_config.m`, sezione T2.
+
+**Le colonne che dicono *perché* una cella fallisce** (C1, forze dai sensori):
 
 | colonna | cosa misura | 1.0× | 2.0× |
 |---|---|---|---|
-| `sotto3_frac` | frazione di tempo con meno di tre piedi a terra | 0.004 | 0.61 |
+| `sotto3_frac` | frazione di tempo con meno di tre piedi a terra | 0.117 | 0.536 |
 | `corpoZ_pp` | rimbalzo verticale del corpo, picco-picco per ciclo | 3.2 mm | 81 mm |
+| `corpoZ_vz` | rms della velocità verticale del corpo | 0.024 m/s | 0.463 m/s |
+
+`corpoZ_pp` e `corpoZ_vz` vanno letti insieme: a 0.5× e a 1.5× il rimbalzo è
+lo stesso (29 e 33 mm), ma a 0.5× il corpo dondola (0.067 m/s) e a 1.5× sbatte
+(0.200 m/s). L'ampiezza da sola non distingue i due cedimenti.
+
+**Fonte delle forze.** Dal 21/9 `adatta_simscape` legge le forze dai sensori del
+modello (`Fleg`), validati allo 0.0% sul peso, e li usa da solo quando li trova.
+Prima le ricostruiva dalla penetrazione. La colonna `note` di ogni riga dice
+quale fonte è stata usata: CSV con fonti diverse **non** si confrontano sulle
+colonne di contatto (`appoggio_medio`, `sotto3_frac`, `slip_tot`,
+`disp_carico`). Le colonne di moto invece sì: sono identiche bit per bit.
 
 `appoggio_medio` da solo non basta e non va usato per questo: una media di 3.0
 vale sia per «tre piedi sempre a terra» sia per «sei e zero alternati», che

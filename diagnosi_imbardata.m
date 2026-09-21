@@ -4,9 +4,17 @@ function D = diagnosi_imbardata(mdl)
 %   D = diagnosi_imbardata
 %
 % IL FATTO DA SPIEGARE
-%   Comandando +-0.1 rad/s, script_T3 ha misurato +0.0027 e -0.0055 rad/s:
-%   il SEGNO e' giusto - entrambe le celle concordano col comando - ma il
-%   modulo e' fra il 3% e il 5%. Il robot cammina quasi dritto.
+%   Comandando +0.1 rad/s, script_T3 misura -0.0047 rad/s: il 5%, e con il
+%   segno che a quel modulo e' rumore. Il robot cammina dritto.
+%
+%   [AGGIORNATO] La misura ora viene da run.w(:,3), la velocita' angolare dal
+%   log, non piu' dall'angolo srotolato: quella vecchia era limitata a
+%   +-pi/durata e non poteva dire niente. Il fatto pero' non cambia -
+%   l'imbardata e' il 5% - quindi non era un artefatto della misura.
+%
+%   Verificato anche che NON e' un problema di verso: invertendo il delta di
+%   tutte e sei le zampe la misura non cambia. Se invertire la causa non
+%   inverte l'effetto, quella non e' la causa.
 %
 % CINQUE RUN CHE SEPARANO LE CAUSE
 %   Ogni riga esclude qualcosa. Non sono cinque tentativi: sono cinque
@@ -47,8 +55,10 @@ function D = diagnosi_imbardata(mdl)
 %                          questa, non e' cinematica: e' aderenza.
 %
 % PRIMA
-%   abilita_log('on')   altrimenti appoggio_medio e slip_tot restano NaN e
-%                       due delle cinque righe non si possono leggere.
+%   Niente. Il prerequisito era abilita_log('on'), ed e' OBSOLETO: le forze di
+%   contatto non sono ottenibili dal modello (Simulink rifiuta
+%   LogSimulationData sui blocchi di contatto) e adatta_simscape le ricostruisce
+%   dalla penetrazione. appoggio_medio e slip_tot ci sono comunque.
 %
 % Progetto FSR PhantomX - A. Russo
 
@@ -168,6 +178,24 @@ if ~isnan(i_ret)
                    '   ma il rumore del robot: prima va capito perche'' deriva.\n']);
     else
         fprintf('   Trascurabile rispetto alle celle comandate: il confronto regge.\n');
+    end
+end
+
+% [CORRETTO] IL SEGNO SI GUARDA PRIMA DELLA LINEARITA'.
+% La lettura sotto confrontava solo il MODULO del rapporto, e con due celle ad
+% arco entrambe a segno opposto al comando (-14.7% e -12.1%) ha stampato
+% "costante, proporzionale" senza vedere che il robot girava al contrario.
+% Due celle con lo stesso segno sbagliato e modulo riproducibile non sono
+% rumore: sono un verso invertito.
+if ~isnan(i_a1) && ~isnan(i_a4)
+    r1 = D.yaw_mis(i_a1)/D.yaw_cmd(i_a1);
+    r4 = D.yaw_mis(i_a4)/D.yaw_cmd(i_a4);
+    if r1 < 0 && r4 < 0
+        fprintf(2, ['\n0. VERSO INVERTITO: entrambe le celle ad arco girano al\n' ...
+                    '   contrario del comando (%+.1f%% e %+.1f%%), con modulo\n' ...
+                    '   riproducibile. Non e'' rumore. Il segno si corregge nel\n' ...
+                    '   DEFAULT di opt.segno in applica_imbardata, non nella formula.\n'], ...
+                100*r1, 100*r4);
     end
 end
 

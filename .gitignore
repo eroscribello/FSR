@@ -1,21 +1,35 @@
+# ATTENZIONE: in .gitignore il # e' un commento SOLO a inizio riga.
+# "slprj/   # cache" NON ignora slprj/: il pattern diventa l'intera riga,
+# commento compreso, e non corrisponde a niente. Per questo le cache di
+# Simulink continuavano a rientrare nel repository. Commenti sempre su una
+# riga a parte, sopra il pattern.
+
 # --- MATLAB / Simulink ---
-slprj/                    # cache di compilazione Simscape, si rigenera
-*.slxc                    # cache del modello, si rigenera
+# cache di compilazione Simscape, si rigenera
+slprj/
+# cache del modello, si rigenera
+*.slxc
 *.slxc.bak
-*.asv                     # autosave dell'editor
+# autosave dell'editor
+*.asv
 *.autosave
 *.m~
 codegen/
 *.mex[aw]64.pdb
 
 # --- artefatti nostri ---
-_cestino/                 # file rimossi durante la pulizia, non fanno parte del repo
-backup_phantomx_*.zip     # backup creati da pulizia.m
-*_backup_*.slx            # backup creati da setup_modello e fix_mesh_paths
+# file rimossi durante la pulizia, non fanno parte del repo
+_cestino/
+# backup creati da pulizia.m
+backup_phantomx_*.zip
+# backup creati da setup_modello e fix_mesh_paths
+*_backup_*.slx
 *_pre_pulizia*.slx
 *_dup_*.*
-*.slx.original            # copia lasciata da fix_mesh_paths
-*.slx.r*                  # backup di Simulink al salvataggio in versione precedente
+# copia lasciata da fix_mesh_paths
+*.slx.original
+# backup di Simulink al salvataggio in versione precedente
+*.slx.r*
 simscape/phantomx_piano_locale.slx
 commit_msg.txt*
 
@@ -43,7 +57,8 @@ T2_runs.mat
 results/**/*.mat
 results/**/*.png
 results/**/*.fig
-risultati.csv             # vecchio nome, sostituito da T2_<controllore>.csv
+# vecchio nome, sostituito da T2_<controllore>.csv
+risultati.csv
 *.mp4
 *.avi
 

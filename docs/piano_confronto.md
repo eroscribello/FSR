@@ -131,6 +131,10 @@ clear OVERRIDE_C2                   % torna a cfg.c2.attiva
 
 ### [MISURATO] Su terreno piano C2 non serve, e si fa sentire
 
+*Numeri del 21/9, forze dai sensori (vedi §9). La prima versione di questa
+sezione usava le forze ricostruite e ne traeva una conclusione sul contatto che
+con i sensori **non regge**: è corretta qui sotto.*
+
 T2 era classificato come **non discriminante** fra C1 e C2, con questa
 motivazione: su terreno piano la retroazione sul contatto non ha niente da
 trovare, quindi non interviene. **La prima metà è confermata, la seconda no.**
@@ -142,49 +146,60 @@ Avanzamento, a parità di cella (`frazione_task`):
 | C1 | 0.847 | 1.163 | 1.119 | 0.826 | −0.482 |
 | C2 | 0.845 | 1.140 | 1.112 | **0.910** | −0.371 |
 
-Entro il 2% nelle prime tre celle: T2 non discrimina sull'avanzamento, come
-previsto. Ma la qualità del contatto sì, e in peggio:
+Entro il 2% nelle prime tre celle: sull'avanzamento T2 non discrimina, come
+previsto. Ma C2 **interviene**, e si vede nel moto e nell'energia:
 
-| a 1.00× | C1 | C2 |
-|---|---|---|
-| `sotto3_frac` | 0.004 | **0.169** |
-| `distacchi` | 23 | 70 |
-| `pitch_rms` | 0.0012 rad | **0.0339 rad** |
-| `potenza_max` | 13.2 W | 47.9 W |
-| `z_media` | 0.1519 m | **0.1574 m** |
+| C2 rispetto a C1 | 0.50× | 1.00× | 1.20× |
+|---|---|---|---|
+| `z_media` | +6.6 mm | +5.5 mm | +4.6 mm |
+| `cot` | 2.21 → **4.39** | 2.32 → 2.64 | 3.04 → 3.18 |
+| `distacchi` | 38 → **155** | 53 → 68 | 46 → 52 |
+| `potenza_max` | 29 → 195 W | 13 → 48 W | 23 → 57 W |
 
-**Il meccanismo si legge in `z_media`:** con C2 il corpo sta 5–8 mm più in alto
+**Il meccanismo si legge in `z_media`:** con C2 il corpo sta 5–7 mm più in alto
 a ogni velocità. La ricerca estende le zampe verso il basso, quindi il corpo si
 alza — su un terreno dove non c'è niente da cercare.
 
 Perché si attiva: la ricerca parte quando `c(i) == 0` e il comando vuole la
 zampa a terra. All'istante del touchdown la forza è sotto la soglia per qualche
 decina di ms, quindi `c = 0` e la ricerca **parte a ogni appoggio**, estendendo
-di qualche mm. Il corpo si alza, le altre zampe si scaricano, altri dropout: si
-autoalimenta. Nell'articolo la ricerca serve a una zampa che **non trova** il
+di qualche mm. Nell'articolo la ricerca serve a una zampa che **non trova** il
 terreno, non al transitorio normale di contatto.
 
 È un difetto di implementazione, non del metodo, e la correzione naturale è un
 **ritardo di innesco**: non cercare finché non è passato un tempo minimo dal
 touchdown comandato. Da provare, non ancora provato.
 
-**Vicino al limite invece C2 aiuta.** A 1.50× l'avanzamento passa da 0.826 a
+> **[CORRETTO] Il contatto non peggiora ovunque.** Con le forze ricostruite
+> questa sezione diceva che C2 peggiora la qualità del contatto a tutte le
+> velocità (`sotto3_frac` 0.004 → 0.169 a 1×). Con i sensori:
+>
+> | `sotto3_frac` | 0.50× | 1.00× | 1.20× |
+> |---|---|---|---|
+> | C1 | 0.249 | 0.117 | 0.310 |
+> | C2 | **0.114** | 0.193 | **0.220** |
+>
+> C2 è peggio solo a 1×, meglio a 0.5× e a 1.2×. L'affermazione sul contatto
+> era un artefatto della misura. Quelle su moto ed energia, sopra, non
+> dipendono dalla fonte delle forze e restano.
+
+**Vicino al bordo invece C2 aiuta.** A 1.50× l'avanzamento passa da 0.826 a
 0.910 e la potenza di picco si **dimezza**, da 285.7 a 139.3 W, con `cot` da
 7.48 a 6.51. Lì le zampe perdono davvero l'appoggio, quindi la ricerca ha
 qualcosa da trovare e il suo costo è ripagato. A 2.00× non basta più: il robot
 indietreggia meno (−0.371 contro −0.482) ma consuma quasi il doppio
 (`cot` 30.9 contro 18.0).
 
-Da riportare così: **C2 sposta il costo, non lo elimina.** Paga qualità del
-contatto e energia dove il terreno è noto, e la recupera dove il terreno
-sorprende — che è esattamente il compromesso che un MPC con orizzonte non
-dovrebbe dover fare, ed è il confronto da impostare con C3.
+Da riportare così: **C2 sposta il costo, non lo elimina.** Paga in **energia e
+distacchi** dove il terreno è noto — fino al doppio del cost of transport a
+0.5× — e recupera dove il terreno sorprende. È il compromesso che un MPC con
+orizzonte non dovrebbe dover fare, ed è il confronto da impostare con C3.
 
 Aperto: `pitch_rms` con C2 vale ~0.03 rad a tutte le velocità basse, quasi
-costante. Un valore costante somiglia a un **offset** più che a un'oscillazione,
-e `pitch_rms` è l'RMS dell'angolo, quindi le due cose si confondono.
-`origine_beccheggio` le separa e non è ancora stato lanciato: finché non lo si
-fa, «C2 fa beccheggiare il robot di 2°» non è un'affermazione sostenuta.
+costante, contro 0.001 di C1. Un valore costante somiglia a un **offset** più
+che a un'oscillazione, e `pitch_rms` è l'RMS dell'angolo, quindi le due cose si
+confondono. `origine_beccheggio` le separa e non è ancora stato lanciato:
+finché non lo si fa, «C2 fa beccheggiare il robot di 2°» non è sostenuto.
 
 ### Il PD d'assetto
 
@@ -261,15 +276,17 @@ statico ridotto da 0,9 a 0,4.
 | | task | terreno | discrimina C1 / C2 ? | perché c'è |
 |---|---|---|---|---|
 | **T1** | piano, rettilineo, velocità nominale | liscio | **no** | riferimento di base |
-| **T2** | piano, rettilineo, **cinque velocità** | liscio | **da riverificare** | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
-| **T3** | traiettoria curva, imbardata costante | liscio | **no** | il cinematico gestisce l'imbardata per costruzione |
+| **T2** | piano, rettilineo, **cinque velocità** | liscio | sull'avanzamento **no**, su energia e distacchi **sì** (§3) | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
+| **T3** | traiettoria curva, imbardata costante | liscio | poco: C2 +3 punti d'imbardata, stessi costi di T2 (§9) | C1 realizza il **15%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
 | **T4** | rampa, salita e discesa | liscio + rampa | **sì** | scenario del paper: terreno noto, corpo da tenere orizzontale |
 | **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** | scenario del paper: terreno **ignoto** |
 | **T6** | terreno irregolare, ostacoli multipli | imperfetto + 7 ostacoli | **sì** | stress test, corrisponde alla loro fig. 19b |
 | **T7** | disturbo impulsivo laterale | liscio | parziale | recupero dopo perturbazione |
 
-Su terreno piano la retroazione del paper non interviene mai: C1 e C2 danno la
-stessa traiettoria, e T1–T3 servono a caratterizzare C3 contro il cinematico. Il
+Su terreno piano la retroazione del paper **non dovrebbe** intervenire, e
+sull'avanzamento infatti C1 e C2 coincidono. Ma interviene lo stesso, a ogni
+touchdown, e costa energia (§3): T1–T3 servono soprattutto a caratterizzare C3
+contro il cinematico. Il
 confronto fra i due cinematici vive su **T4, T5 e T6** — che sono poi esattamente
 gli scenari sperimentali degli autori. Se il tempo obbligasse a tagliare, si
 tagliano task piani, non quelli accidentati.
@@ -282,8 +299,13 @@ scritta due volte e in modo incompatibile — tre fattori variando la velocità 
 non erano confrontabili e la curva non si poteva disegnare.
 
 ```matlab
-cfg.t2_fattori = [0.5 0.75 1.0 1.5 2.0];
+cfg.t2_fattori = [0.5 1.0 1.20 1.5 2.0];
 ```
+
+Il terzo punto era 0.75×; ora è 1.20×, l'ultima cella con moto del corpo
+stabile. Tre punti di confronto (0.5, 1.0, 1.20) e due fuori inviluppo (1.5,
+2.0). Perché 1.20× non si chiama «limite», e i due inviluppi da riportare: vedi
+`common/phantomx_config.m`, sezione T2.
 
 **La variabile indipendente è la velocità comandata**, non il periodo. Due
 ragioni: tutte le metriche della famiglia A sono definite *rispetto* al comando
@@ -446,44 +468,154 @@ punto su cui un MPC che pianifica sul terreno noto ha qualcosa da rivendicare.
 
 **La cella 2× fallisce per inversione, non per taratura.** In tutte e sei le
 combinazioni `frazione_task` è NEGATIVA (da −26% a −69%): il robot cammina
-indietro. E lo fa con contatto eccellente — 3,46 piedi a terra, dispersione
-dell'1,3% — quindi non è perdita di appoggio. Nessun valore di `z0` o `H` la
-recupera. Resta in piedi una sola ipotesi: i filtri `sys_filter`, `tau` = 0,05 s
-su uno swing che a 2× dura 250 ms. Da verificare rendendo `tau` sovrascrivibile
-dall'`InitFcn` e rilanciando la cella: se `frazione_task` torna positiva, il
-fallimento a 2× è del **banco di prova** e non del controllore, e va scritto,
-perché altrimenti si attribuisce all'MPC un vantaggio che non ha.
+indietro, e nessun valore di `z0` o `H` la recupera.
+
+**[CHIUSO] La causa: il tripode non regge l'andatura.** I sospetti sono stati
+esclusi uno per uno: `sys_filter` è un residuo che nessun blocco legge, e i
+giunti eseguono la corsa comandata a tutte le velocità (escursione del piede
+71–72 mm, identica a 1×, 1.5× e 2×). Quello che cede è il corpo: a 2× rimbalza
+di 81 mm su 154 di altezza di appoggio e perde l'aggancio di fase col contatto
+(accordo 51%). Lo scivolamento a −30 mm è la conseguenza, non la causa. È un
+limite del controllore, quindi la cella resta in relazione, letta con
+`corpoZ_pp`/`corpoZ_vz` e non con `err_vx_rms`. Percorso completo e lezioni di
+metodo in `archivio/README.md`.
+
+(La prima versione di questa sezione parlava di «contatto eccellente, 3,46
+piedi a terra»: veniva dalle forze ricostruite, ed è una delle ragioni per cui
+la perdita di appoggio era stata esclusa troppo presto. Con i sensori, a 2× i
+piedi a terra sono 2.33 e sotto tre il 54% del tempo.)
+
+### [MISURATO] T3 con C1: il 15% dell'imbardata comandata
+
+Sessione pulita, forze dai sensori, `yaw_d = ±0.1 rad/s`, 15 s:
+
+| | +0.1 | −0.1 |
+|---|---|---|
+| `yaw_mis` [rad/s] | +0.0147 | −0.0153 |
+| `yaw_rapporto` | 14.7% | 15.3% |
+| `roll_rms` / `pitch_rms` [rad] | 0.0043 / 0.0018 | 0.0044 / 0.0015 |
+
+Asimmetria fra i due versi **3.9%**, corpo orizzontale, imbardata parassita a
+comando nullo 5·10⁻⁶ rad/s — il segnale è tremila volte sopra il rumore. Il
+raggio effettivo è v/ω ≈ 0.139/0.0147 ≈ **9.4 m** contro gli 1.2 comandati.
+
+Caratterizzazione da `diagnosi_imbardata`:
+
+| caso | realizzato | lettura |
+|---|---|---|
+| arco 0.1 | 14.7% | la cella di campagna |
+| arco 0.4 | 23.8% | cresce col comando: c'è una componente a soglia |
+| destre specchiate | ≈ 0 | i due lati contribuiscono uguale: nessuna asimmetria destra/sinistra |
+| **sul posto** (caso esatto) | **56%** | senza approssimazioni sul passo |
+
+Due limiti diversi, da tenere separati in relazione:
+
+- **56% sul posto** è il limite di aderenza del tripode comandato in posizione:
+  lo stesso scivolamento che in rettilineo lo fa andare *più* veloce del
+  comando (116%) qui gli toglie metà della rotazione. È del metodo.
+- **15–24% sull'arco** è molto sotto il 56% perché le sei zampe condividono una
+  sola lunghezza di passo, mentre in curva l'interna e l'esterna ne vorrebbero
+  due diverse, e si contrastano. È della **nostra implementazione** — due blocchi
+  di traiettoria invece di sei — e va dichiarato accanto al confronto con C3,
+  altrimenti si attribuisce all'MPC un vantaggio che è in parte nostro.
+
+`yaw_d` resta 0.1 per la campagna: il segnale è già ampiamente sopra il rumore,
+e alzare il comando porta il `delta` per zampa a 26°, dove l'approssimazione sul
+passo pesa di più.
+
+**Tre errori di metodo, tutti costati giorni, da non ripetere:**
+
+1. **Stato residuo della sessione.** Tutte le misure d'imbardata prima del 21/9
+   sono da scartare: erano prese in una sessione MATLAB con stato residuo nel
+   workspace, dove il robot in rettilineo aveva 0.455 piedi a terra e 4° di
+   beccheggio. In sessione pulita, stesso codice: 2.90 e 0.001. **Ogni campagna
+   parte da `clear all; bdclose all; startup_phantomx`.**
+2. **Il segno giudicato sul rumore.** Con quella misura `applica_imbardata` è
+   stato portato a `segno = −1`, e ci è rimasto tre giorni. Invertire il segno
+   non cambiava niente — e andava letto come «la misura non vale», non come «il
+   segno è giusto comunque». In sessione pulita −1 faceva girare il robot al
+   contrario; +1, il valore geometrico, è quello giusto.
+3. **Il segno prima del modulo.** Il controllo in `script_T3` guardava `sign()`
+   senza chiedere un modulo minimo, quindi scattava sul rumore. Ora il modulo
+   viene prima (soglia 5%, empirica: separa il 4.7% casuale del robot rotto dal
+   15% riproducibile di quello sano).
+
+**T3 con C2** — stessa sessione, stessa fonte delle forze:
+
+| | C1 +0.1 | C1 −0.1 | C2 +0.1 | C2 −0.1 |
+|---|---|---|---|---|
+| `yaw_rapporto` | 14.7% | 15.3% | **17.2%** | **18.3%** |
+| `z_media` [m] | 0.1520 | 0.1519 | 0.1575 | 0.1575 |
+| `pitch_rms` [rad] | 0.0018 | 0.0015 | 0.0349 | 0.0351 |
+| `cot` | 2.45 | 2.44 | 2.80 | 2.80 |
+| `tau_max` [N·m] | 1.67 | 1.62 | 11.4 | 11.4 |
+
+Asimmetria di C2 fra i due versi 6.8%, sotto il 15%. C2 realizza un po' più
+imbardata di C1: +2.5 e +3.0 punti, nello stesso senso in entrambi i versi. È
+coerente con una ricerca che tiene i piedi in contatto in curva, ma sono due
+run: va detto come «leggermente maggiore», non come un guadagno misurato.
+
+La cosa più solida è un'altra: **le firme di C2 misurate in T2 ricompaiono in
+T3 con gli stessi valori.** Corpo 5.6 mm più alto (5.5 in T2 a 1×), `cot`
++14.5% (+14% in T2), `pitch_rms` ~0.035 rad (0.034 in T2). Due task diversi,
+stesso meccanismo, stessa ampiezza: il difetto d'innesco della ricerca non è un
+caso di una campagna.
+
+**Da dichiarare: i picchi di coppia di C2.** `tau_max` arriva a 11.4 N·m, in T3
+come in T2 (10.4 a 1×), contro gli 1.5 N·m del datasheet dell'AX-12A e 1.6–2.0
+di C1. `frazione_saturo` resta piccola (1.3% del tempo), quindi sono picchi
+brevi, ma sul robot vero un attuatore saturerebbe lì dove il simulatore, con
+attuatori ideali, non lo fa. È un vantaggio che il banco concede a C2 e va
+scritto.
+
+**T3 è chiuso**, su C1 e C2. Resta aperta per entrambi i task solo l'origine
+del `pitch_rms` di C2 (offset o oscillazione), che `origine_beccheggio` separa.
 
 ### Come sono ottenute le forze di contatto
 
-Nel modello **non** sono disponibili, verificato per tre vie:
+**Dal 21/9 dai sensori del modello** (`Fleg`), aggiunti dal collega nel commit
+del 17/9. `adatta_simscape` li usa da solo quando li trova.
 
-- il ramo `Fleg`/`Fsum` è un abbozzo mai finito: i dodici `From` cercano le
-  etichette `Force_sens_lf..rr` e nel modello nessun `Goto` le produce. Un
-  `From` senza `Goto` è risolto come costante, da cui l'unico campione che
-  `Fleg` restituiva;
-- il log di Simscape contiene 107 nodi, tutti giunti più il 6-DOF Joint;
-- `LogSimulationData` sui blocchi di contatto non si può accendere: Simulink
-  risponde *«does not support logging»*.
+Validazione, C1 a 1.0× per 10 s: forza verticale media **15.55 N contro 15.55 N
+di peso, 0.0%**. È una verifica forte, perché nessuno ha imposto il vincolo: su
+un ciclo periodico la reazione verticale media deve valere il peso, e una misura
+fisica lo rispetta da sola.
 
-`adatta_simscape` le **ricostruisce** dalla penetrazione con la stessa legge
-costitutiva dichiarata dai blocchi (`SmoothSpringDamper`, `contact_k`,
-`contact_c`, `contact_w`):
+`Fleg` è il **modulo** della forza, messo nella componente z. Che la media
+chiuda allo 0.0% dice che la componente tangenziale è trascurabile nel modulo —
+altrimenti la media starebbe sopra il peso. Le componenti tangenziali restano
+comunque non disponibili separatamente, e `Fz_max_norm` è un limite superiore.
+
+**Prima** le forze venivano ricostruite dalla penetrazione, con la stessa legge
+dei blocchi di contatto:
 
 ```
 delta = max(0, z_terreno − z_piede)
 Fz    = (k·delta + c·delta_punto) · rampa(delta/w)
 ```
 
-La quota del terreno non è assunta ma **ricavata** imponendo che la somma delle
-sei forze valga in media il peso: un vincolo fisico, che assorbe lo sfasamento
-di qualche millimetro fra il frame della cinematica diretta e quello di
-Simscape. Verifica: forza totale 15,72 N contro 15,55 di peso, **1,1%**;
-penetrazione media 4,08 mm contro 4,32 attesi da `cfg`.
+con la quota del terreno ricavata imponendo che la somma delle sei forze valga
+in media il peso. La sua verifica (1.1%) era debole proprio per questo: la
+chiusura sul peso era in parte imposta. La ricostruzione resta in
+`adatta_simscape` come ripiego quando i sensori mancano.
 
-Limiti da dichiarare: solo la componente **normale**, nessun attrito, quindi
-nessuna metrica tangenziale. E l'ipotesi quasi statica per la stima della
-quota, che `adatta_simscape` verifica a ogni run e segnala se cade.
+**Conseguenze sulle misure:**
+
+- la colonna `note` di ogni riga dice quale fonte è stata usata;
+- CSV con fonti diverse **non si confrontano sulle colonne di contatto**
+  (`appoggio_medio`, `sotto3_frac`, `slip_tot`, `disp_carico`). Con i sensori
+  il contatto è più severo: C1 a 1.0× sta sotto tre piedi l'11.7% del tempo,
+  contro lo 0.4% della ricostruzione;
+- le colonne di **moto** sono identiche bit per bit fra le due fonti
+  (`frazione_task` a 1.0× coincide all'ottava cifra): il robot è lo stesso, è
+  cambiata solo la misura del contatto;
+- i due CSV di T2 sono stati rifatti con i sensori, e tutte le tabelle di
+  questo documento usano quella fonte salvo dove è detto.
+
+Storia, perché spiega le scelte precedenti: fino al 17/9 le forze **non erano
+ottenibili** dal modello. I dodici `From` di `Fleg` non avevano un `Goto`, il
+log di Simscape conteneva solo i giunti, e `LogSimulationData` sui blocchi di
+contatto è rifiutato da Simulink.
 
 **Sul modello Simscape**
 
@@ -496,19 +628,19 @@ quota, che `adatta_simscape` verifica a ogni run e segnala se cade.
   `cfg.lt`/`cfg.foot_offset`, la traslazione delle sei sfere — più una
   ritaratura di `z0`. **Va deciso prima della campagna, non durante**, e va
   scritto in relazione come scelta di modellazione.
-- **Geometria della rampa (T4)**: il cablaggio è risolto (la rampa prende in
-  prestito lo slot `ostacolo7`), ma il Brick è 4×4 m e a 8° compenetra il
-  pavimento. Da ridimensionare e riposizionare, non da ricablare.
+- **Rampa (T4)**: rifatta dal collega (commit del 17 e 20/9), con blocchi e
+  contatti dedicati. Da verificare: `rampa_pos` è passato a `[-0.8, 0, 0.1]`,
+  mentre il commento in `phantomx_config` dice ancora «riposizionata davanti»
+  — con il robot che avanza verso +x, −0.8 è dietro.
 - **Ostacoli 4–7**: poggiano sui rilievi del terreno imperfetto (da +35 a
-  +71 mm). Su pavimento liscio restano in aria: in T5 sono utilizzabili solo
-  `ost1`, `ost2`, `ost3`.
+  +71 mm). Il vecchio T6 usava il pavimento imperfetto per questo; il nuovo
+  `applica_terreno` usa `pavimento` per tutti i task. **Da verificare a occhio**
+  che in T6 gli ostacoli 4–7 non galleggino.
 - Due `Data Store Write` scrivono nella stessa memoria a `t = 0` senza ordine
   garantito: non determinismo in un modello che deve produrre misure ripetibili.
-- `sys_filter`, filtri del primo ordine con `τ = 0,05 s` sui comandi di giunto,
-  con nomenclatura ereditata da un esperimento di reinforcement learning
-  abbandonato. A doppia velocità lo swing dura 200 ms e il filtro ne taglia il
-  25%: va escluso che il fallimento della cella 2× sia del banco di prova
-  invece che del controllore.
+- ~~`sys_filter`~~ — **chiuso**: l'`InitFcn` lo costruisce, i poli seguono `τ`
+  alla cifra, ma nessuno dei 2085 blocchi del modello lo legge. È un residuo e
+  non c'entra con la cella 2× (vedi `archivio/README.md`).
 - Semantica dei To Workspace `c_*` e `z_*`: da chiarire se siano forze o flag.
 
 **Sull'MPC**

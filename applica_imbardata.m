@@ -12,8 +12,9 @@ function info = applica_imbardata(yaw_d, verbose, mdl, opt)
 %               com'e'. Se la rotazione sul posto funziona e l'arco no, la
 %               causa e' l'approssimazione sul modulo; se non funziona
 %               nemmeno quella, e' aderenza.
-%   .segno      +1 (default) o -1: inverte il delta di TUTTE le zampe. Serve
-%               se l'imbardata misurata ha il segno opposto al comando.
+%   .segno      +1 (default) o -1: inverte il delta di TUTTE le zampe.
+%               +1 e' il valore geometrico, confermato da una misura in
+%               sessione pulita. Va lasciato li': vedi la nota sul default.
 %   .specchia   false (default). Se true, inverte il delta solo delle zampe
 %               DESTRE. Serve a verificare se il parametro "side" di inv_kyn
 %               specchia anche la rotazione del passo: in quel caso i
@@ -88,6 +89,26 @@ if nargin < 4, opt = struct(); end
 cfg = phantomx_config();
 if ~bdIsLoaded(mdl), load_system(mdl); end
 
+% [MISURATO] segno = +1, il valore geometrico. E' stato a -1 per tre giorni, e
+% la storia va tenuta perche' e' un errore facile da ripetere.
+%
+% Venerdi' e' stato portato a -1 perche' script_T3 misurava l'imbardata di
+% segno opposto al comando. Ma quella misura era fatta in una sessione MATLAB
+% con stato residuo nel workspace: il robot aveva mezzo piede a terra (0.455)
+% e beccheggiava di 4 gradi, quindi il segno era RUMORE. Invertirlo non
+% cambiava niente, e la cosa andava letta come "la misura non e' valida", non
+% come "il segno e' giusto comunque".
+%
+% In sessione pulita, con -1: arco 0.1 -> -14.7%, arco 0.4 -> -12.1%.
+% Verso opposto, modulo riproducibile e lineare, imbardata parassita tremila
+% volte piu' piccola: un'inversione vera, causata da quel -1.
+%
+% Riscontro indipendente: con specchia = true l'imbardata va a ~0, esattamente
+% quello che il segno sbagliato predice - sinistre al contrario, destre giuste.
+%
+% Il segno si decide QUI e una volta sola, non nei sei Constant e non nella
+% formula: la formula da' il valore geometrico, l'opzione porta quello
+% misurato, e due posti che decidono lo stesso segno sono un posto di troppo.
 def = struct('v', cfg.S/cfg.T_stance, 'segno', +1, 'specchia', false);
 fo = fieldnames(def);
 for q = 1:numel(fo)

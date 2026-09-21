@@ -146,33 +146,53 @@ cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
 % assestamento asimmetrico dentro la cedevolezza del contatto, ad alta
 % perdita di appoggio). E' un risultato, e con tre punti non si vede.
 %
-% [MISURATO] 0.75x SOSTITUITO DAL LIMITE DI C1, 1.20x.
-% Il terzo punto era 0.75x, scelto a occhio fra 0.5x e 1x. Ora e' il limite
-% del cinematico, misurato da limite_velocita su sei fattori fra 1.0 e 1.5
-% con un criterio dichiarato prima di guardare i dati (tripode presente oltre
-% il 95% del tempo, rimbalzo del corpo sotto 10 mm, avanzamento positivo):
+% [MISURATO] 0.75x SOSTITUITO DA 1.20x, L'ULTIMA CELLA CON MOTO STABILE.
+% Il terzo punto era 0.75x, scelto a occhio fra 0.5x e 1x. Ora e' 1.20x,
+% scelto da limite_velocita su sei fattori fra 1.0 e 1.5.
 %
-%   fattore   task     piedi   sotto 3   rimbalzo
-%     1.00   +116%      3.33     0.4%      3.2 mm
-%     1.10   +115%      3.23     2.6%      3.3 mm
-%     1.20   +112%      3.38     2.2%      3.4 mm    <- limite
-%     1.30   +107%      3.48     7.1%      9.4 mm       cede il tripode
-%     1.40    +99%      2.65    35.9%     19.7 mm
-%     1.50    +83%      2.47    34.3%     33.3 mm
+% [CORRETTO 21/9] 1.20x NON SI CHIAMA PIU' "LIMITE DI C1".
+% Il criterio dichiarato prima di guardare i dati aveva tre condizioni:
+% tripode presente oltre il 95% del tempo, rimbalzo del corpo sotto 10 mm,
+% avanzamento positivo. La prima era misurata con le forze RICOSTRUITE dalla
+% penetrazione, e con quelle 1.20x la passava (2.2% sotto tre piedi).
 %
-% Il ginocchio e' netto fra 1.20x e 1.30x, e la condizione che cede per prima
-% e' il tripode: l'appoggio si perde PRIMA che il rimbalzo diventi visibile.
-% Spostare la soglia fra il 2% e il 15% non cambia il limite, quindi non e'
-% un numero scelto dalla soglia.
+% Dal 21/9 le forze vengono dai sensori del modello (Fleg), validati allo
+% 0.0% sul peso. Con i sensori la stessa condizione boccia anche l'andatura
+% NOMINALE: a 1.0x il robot sta sotto tre piedi l'11.7% del tempo. Un
+% criterio che rifiuta il nominale e' tarato male, non e' un risultato: la
+% soglia del 5% era calibrata sull'altra misura e non si trasferisce.
+% Riscalarla sul nominale DOPO aver visto i dati vorrebbe dire scegliere il
+% limite: x2 da' 1.0x, x3 da' 1.2x. Non si fa.
 %
-% Un punto a mezza velocita' e uno al limite dicono piu' di due punti bassi:
-% 0.5x e' l'altro regime di cedimento, 1.20x e' il bordo dell'inviluppo.
+% Resta il criterio che non dipende dalla fonte delle forze, dichiarato prima
+% e invariato: il moto del corpo.
+%
+%   fattore   task    rimbalzo   sotto 3 (sensori)
+%     1.00   +116%     3.2 mm      11.7%
+%     1.10   +115%     3.3 mm        -
+%     1.20   +112%     3.4 mm      31.0%   <- ultima cella con moto stabile
+%     1.30   +107%     9.4 mm        -        al bordo della soglia
+%     1.40    +99%    19.7 mm        -
+%     1.50    +83%    33.3 mm      51.5%
+%
+% In relazione vanno riportati DUE inviluppi, perche' dicono cose diverse:
+%   - moto del corpo: C1 regge fino a 1.20x, e' al bordo a 1.30x (9.4 mm su
+%     una soglia di 10, da una sola run: non basta per spostare il punto), e
+%     cede a 1.40x;
+%   - contatto misurato: il tripode e' al meglio a 1.0x (11.7%) e peggiora
+%     GIA' a 1.20x (31%), dove pero' il corpo e' il piu' quieto di tutta la
+%     curva (corpoZ_vz 0.018 m/s, il minimo).
+% Fonderli in un numero solo nasconderebbe proprio questa divergenza.
+%
+% Un punto a mezza velocita' e uno all'ultima cella stabile dicono piu' di
+% due punti bassi: 0.5x e' l'altro regime di cedimento, 1.20x il bordo.
 cfg.t2_fattori = [0.5 1.0 1.20 1.5 2.0];
 
 % QUALI PUNTI SONO CONFRONTABILI E QUALI NO.
-% I primi tre sono dentro l'inviluppo operativo di C1 e sono i punti su cui
-% si confrontano C1, C2 e C3. Gli ultimi due sono FUORI: a 1.5x il robot
-% saltella (34% del tempo sotto tre piedi) e a 2.0x indietreggia.
+% I primi tre hanno moto del corpo stabile e sono i punti su cui si
+% confrontano C1, C2 e C3. Gli ultimi due sono FUORI: a 1.5x il robot
+% saltella (rimbalzo 33 mm, 52% del tempo sotto tre piedi) e a 2.0x
+% indietreggia.
 %
 % Vanno riportati, non scartati, ma con le metriche giuste: sotto3_frac e
 % corpoZ_pp, non err_vx_rms. A quelle velocita' l'errore non e' un errore di
@@ -184,8 +204,10 @@ cfg.t2_fattori = [0.5 1.0 1.20 1.5 2.0];
 % E' anche l'ipotesi da verificare su C2 e C3: se l'MPC cammina dove C1
 % rimbalza, il risultato del progetto e' che l'MPC ESTENDE L'INVILUPPO, con
 % la soglia di C1 misurata in anticipo invece che trovata a posteriori.
-cfg.t2_limite    = 1.20;              % [x] limite misurato di C1
-cfg.t2_confronto = [0.5 1.0 1.20];    % dentro l'inviluppo
+% Il nome t2_limite resta per compatibilita' con gli script: il valore e'
+% l'ultima cella con moto stabile, vedi sopra.
+cfg.t2_limite    = 1.20;              % [x] ultima cella con moto stabile
+cfg.t2_confronto = [0.5 1.0 1.20];    % moto del corpo stabile
 cfg.t2_fuori     = [1.5 2.0];         % fuori: casi non funzionanti
 
 %% ===== contatto e terreno =====

@@ -30,8 +30,11 @@ del tempo e perde l'aggancio di fase col contatto (accordo 51%, cioe'
 testa-o-croce). Non e' un difetto del banco: e' il limite del controllore
 cinematico comandato in posizione.
 
-Il limite e' poi stato misurato a **1.20x** (`limite_velocita.m`, che resta
-attivo perche' va rilanciato se cambia la geometria o la taratura).
+Poi `limite_velocita.m` ha individuato **1.20x** come ultima cella con moto del
+corpo stabile (resta attivo: va rilanciato se cambia la geometria o la
+taratura). Non si chiama piu' "limite di C1": la condizione sul tripode era
+tarata sulle forze ricostruite e con i sensori boccia anche il nominale. Vedi
+`common/phantomx_config.m`, sezione T2.
 
 ### `prova_filtri.m`
 Sweep di `tau`, il tempo dei diciotto filtri del primo ordine costruiti
@@ -98,8 +101,25 @@ sui tre punti, ma **non e' spiegato**.
 
 ## Cosa NON e' stato archiviato, e perche'
 
-- `mappa_contatti.m` e `quota_terreno.m` sono **chiamati da
-  `applica_terreno`**: sono dipendenze, non diagnostici.
+- ~~`mappa_contatti.m` e `quota_terreno.m` erano chiamati da `applica_terreno`~~
+  **[AGGIORNATO 21/9]** Non piu': la riscrittura del collega indirizza i blocchi
+  per nome (`Contact_pavimento`, `Solid_Ostacolo3`, ...) e la mappa letta dal
+  modello non serve. Nessun file li chiama: sono da archiviare anche loro.
+
+## Da quando i blocchi hanno un nome
+
+`mappa_contatti` risolveva a runtime una permutazione fra contatti ed
+etichette - `Force6` toccava `ostacolo`, `Force2` toccava `ostacolo2` - perche'
+i blocchi si chiamavano `Spatial Contact Force1..8` e nessuno sapeva quale
+fosse quale. Il collega ha rinominato i blocchi nel modello, uno per elemento
+per piede, e la permutazione e' sparita: noi avevamo curato il sintomo, lui ha
+tolto la causa.
+
+`quota_terreno` misurava dagli STL la quota delle superfici, e ne era uscita la
+correzione `ost_dz = 0.025` (pavimento imperfetto meno liscio). La correzione
+e' ancora in `cfg`, ma il nuovo catalogo ha un solo `pavimento`: se il
+pavimento imperfetto non c'e' piu', quel valore va riverificato - a occhio in
+T5, l'ostacolo deve poggiare.
 - `taratura_T2.m` resta attivo: va rilanciato se cambia la geometria delle
   zampe o il terreno.
 - `limite_velocita.m` resta attivo per la stessa ragione.
