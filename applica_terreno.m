@@ -1,16 +1,29 @@
-function info = applica_terreno(task, verbose, mdl)
+function info = applica_terreno(task, verbose, mdl, opt)
 %APPLICA_TERRENO Configura gli elementi del terreno per la simulazione.
 %
 % USO:
 %   applica_terreno('T1')    -> Piano liscio
-%   applica_terreno('T4')    -> Piano liscio + Rampa
+%   applica_terreno('T4')    -> Piano liscio + Rampa (salita)
+%   applica_terreno('T4D')   -> Piano liscio + Dosso (salita, cima, discesa)
 %   applica_terreno('T5')    -> Piano liscio + Ostacolo 1
 %   applica_terreno('T6')    -> Piano liscio + Tutti gli ostacoli (1..7)
 %   applica_terreno('TUTTO') -> Tutti gli elementi attivi
-
+%
+% OPZIONI (quarto argomento)
+%   .rampa_gradi   inclinazione della rampa di T4 [gradi]. Default da cfg.
+%                  La rampa esce dal pavimento sempre a cfg.terreno.rampa_x_inizio,
+%                  qualunque sia l'angolo: serve alla ricerca dell'angolo limite.
+%
+% RAMPA E DOSSO USANO LO STESSO SOLIDO (Solid_Rampa)
+%   T4  : il cubo 8 x 8 x 0.1 del pavimento, inclinato.
+%   T4D : un prisma a dosso, scritto come STL da dosso_profilo e caricato nel
+%         solido cambiandone il file. Il contatto dei piedi e' collegato al
+%         solido, quindi segue la geometria senza toccare il .slx.
+%   Ogni chiamata rimette il file giusto: T4 dopo T4D torna al cubo.
 if nargin < 1 || isempty(task),    task = 'T1'; end
 if nargin < 2 || isempty(verbose), verbose = true; end
 if nargin < 3 || isempty(mdl),     mdl = 'phantomx_sim_zero'; end
+if nargin < 4, opt = struct(); end
 
 task = upper(strtrim(char(task)));
 if ~bdIsLoaded(mdl), load_system(mdl); end
@@ -54,7 +67,7 @@ end
 %% 2. Selezione elementi attivi per Task
 switch task
     case {'T1','T2','T3','T7'}, elementi_attivi = {'pavimento'};
-    case 'T4',                  elementi_attivi = {'pavimento', 'rampa'};
+    case {'T4','T4D'},          elementi_attivi = {'pavimento', 'rampa'};
     case 'T5',                  elementi_attivi = {'pavimento', 'ostacolo1'};
     case 'T6',                  elementi_attivi = [{'pavimento'}, arrayfun(@(k) sprintf('ostacolo%d',k), 1:7, 'UniformOutput',false)];
     case 'TUTTO',               elementi_attivi = tutti_gli_elementi.';
@@ -113,22 +126,49 @@ if verbose
     end
 end
 
-% [LASCIATA COM'E', DA DECIDERE COL COLLEGA] Anche questa sezione cerca il
-% Rigid Transform per NOME, e fallisce in silenzio come facevano le sezioni 3
-% e 4: la posa da cfg (rampa_pos, rampa_gradi) non e' mai stata applicata, e
-% la rampa sta dove la mette il .slx salvato. Non la si aggancia a
-% rt_collegato di proposito: attivarla ora sposterebbe la rampa nella posa di
-% cfg, mai verificata - e rampa_pos = [-0.8 0 0.1] e' dietro il robot.
-% Posa della Rampa (se attiva)
+% Posa della Rampa (se attiva). Come per gli ostacoli, il Rigid Transform si
+% trova dal collegamento del solido; un fallimento finisce in 'mancanti' e in
+% T4/T4D e' un errore (sezione 5b), non un avviso nascosto da verbose.
+% L'offset del blocco NON e' la posizione nel mondo: il solido sta sulla porta
+% B, il mondo sulla F, quindi il solido e' nella posa inversa (vedi il
+% commento su rampa_x_inizio in phantomx_config).
 if ismember('rampa', elementi_attivi) && isfield(cfg, 'terreno')
-    try
-        rt_rampa = [mdl '/' cat.rampa.rt];
-        set_param(rt_rampa, 'TranslationCartesianOffset', mat2str(cfg.terreno.rampa_pos));
-        set_param(rt_rampa, 'RotationMethod',          'StandardAxis');
-        set_param(rt_rampa, 'RotationStandardAxis',    '+Y');
-        set_param(rt_rampa, 'RotationAngle',           num2str(cfg.terreno.rampa_gradi));
-    catch ME
-        if verbose, warning('Impossibile impostare la posa della rampa: %s', ME.message); end
+    rt_rampa  = cat.rampa.rt_path;
+    sol_rampa = [mdl '/' cat.rampa.solido];
+    if isempty(rt_rampa)
+        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.rampa.solido);   %#ok<AGROW>
+    else
+        try
+            if strcmp(task, 'T4D')
+                % dosso scritto direttamente in coordinate mondo: posa identita'
+                G   = dosso_profilo(cfg.terreno.dosso, cfg.floor_top);
+                stl = scrivi_dosso(G, cfg.terreno.dosso.larghezza);
+                set_param(sol_rampa, 'ExtGeomFileName', stl);
+                set_param(rt_rampa, 'TranslationCartesianOffset', '[0 0 0]');
+                set_param(rt_rampa, 'RotationMethod', 'None');
+                if verbose
+                    fprintf('  dosso: salita %.3f-%.3f m, cima fino a %.3f, discesa fino a %.3f (H %.0f mm)\n', ...
+                            G.x(1), G.x(2), G.x(3), G.x(4), 1e3*G.H);
+                end
+            else
+                gradi = cfg.terreno.rampa_gradi;
+                if isfield(opt,'rampa_gradi') && ~isempty(opt.rampa_gradi)
+                    gradi = opt.rampa_gradi;
+                end
+                t_blocco = posa_rampa(gradi, cfg.terreno.rampa_x_inizio, cfg.floor_top);
+                set_param(sol_rampa, 'ExtGeomFileName', cfg.terreno.rampa_stl);
+                set_param(rt_rampa, 'TranslationCartesianOffset', mat2str(t_blocco, 6));
+                set_param(rt_rampa, 'RotationMethod',          'StandardAxis');
+                set_param(rt_rampa, 'RotationStandardAxis',    '+Y');
+                set_param(rt_rampa, 'RotationAngle',           num2str(gradi));
+                if verbose
+                    fprintf('  rampa: %g gradi, esce dal pavimento a x = %.3f m (offset blocco %s)\n', ...
+                            gradi, cfg.terreno.rampa_x_inizio, mat2str(t_blocco, 4));
+                end
+            end
+        catch ME
+            mancanti{end+1} = sprintf('%s (%s): %s', cat.rampa.solido, rt_rampa, ME.message); %#ok<AGROW>
+        end
     end
 end
 
@@ -170,7 +210,7 @@ if ~isempty(mancanti)
             any(contains(mancanti, cat.(elementi_attivi{i}).solido));
     end
     msg = sprintf('applica_terreno(%s): non applicato a\n  %s', task, strjoin(mancanti, '\n  '));
-    if attivi_mancanti && any(ost_dx)
+    if attivi_mancanti && (any(ost_dx) || ismember('rampa', elementi_attivi))
         error('applica_terreno:mancanti', '%s', msg);
     else
         warning('applica_terreno:mancanti', '%s', msg);
@@ -228,3 +268,43 @@ for p = [ph.LConn ph.RConn]
     end
 end
 end
+
+function t = posa_rampa(gradi, x_e, z_e)
+%POSA_RAMPA  Offset del Rigid Transform perche' la rampa esca dal pavimento in x_e.
+% Il solido e' il cubo 8 x 8 x 0.1: faccia superiore a z locale +0.05. Il
+% punto (-0.5, 0, 0.05) di quella faccia viene messo in (x_e, 0, z_e): davanti
+% restano 4.5 m di rampa, dietro 3.5 m interrati (solo estetica).
+% Solido sulla porta B: nel mondo ha rotazione R' e posizione p = -R'*t,
+% quindi t = -R*p.   [VERIFICATO] a 8, 20 e 40 gradi la superficie esce dal
+% pavimento a x_e con la pendenza richiesta.
+a  = deg2rad(gradi);
+Ry = @(q) [cos(q) 0 sin(q); 0 1 0; -sin(q) 0 cos(q)];
+p  = [x_e; 0; z_e] - Ry(-a) * [-0.5; 0; 0.05];
+t  = (-Ry(a) * p).';
+end
+
+function f = scrivi_dosso(G, larghezza)
+%SCRIVI_DOSSO  STL del prisma a dosso, estruso in y su +-larghezza/2.
+% File generato: sta in .gitignore, si riscrive a ogni applica_terreno('T4D').
+P = G.P;  n = size(P,1);  w = larghezza/2;
+V = [P(:,1) -w*ones(n,1) P(:,2);  P(:,1) w*ones(n,1) P(:,2)];
+F = zeros(0,3);
+for k = 2:n-1                                   % le due facce laterali
+    F(end+1,:) = [1 k k+1];                     %#ok<AGROW>
+    F(end+1,:) = [n+1 n+k n+k+1];               %#ok<AGROW>
+end
+for k = 1:n                                     % il contorno
+    j = mod(k,n) + 1;
+    F(end+1,:) = [k j n+j];                     %#ok<AGROW>
+    F(end+1,:) = [k n+j n+k];                   %#ok<AGROW>
+end
+c = mean(V,1);                                  % normali verso l'esterno
+for i = 1:size(F,1)
+    a = V(F(i,1),:);  b = V(F(i,2),:);  e = V(F(i,3),:);
+    if dot(cross(b-a, e-a), (a+b+e)/3 - c) < 0, F(i,[2 3]) = F(i,[3 2]); end
+end
+radice = fileparts(which('applica_terreno'));
+f = fullfile(radice, 'simscape', 'props', 'T4D_dosso.stl');
+stlwrite(triangulation(F, V), f);
+end
+

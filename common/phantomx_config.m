@@ -241,11 +241,55 @@ cfg.body_z0_geom = cfg.z0_eff + cfg.contact.foot_r + cfg.floor_top - cfg.p_hip(3
 cfg.body_z0 = cfg.body_z0_geom - cfg.mass*cfg.g/(6*cfg.contact.k);
 % cfg.body_z0 = cfg.body_z0_geom + 0.002;          % 0.148366
 
-% Rampa di T4. Nel modello sta a x = -2.5, cioe' dietro al robot che avanza
-% verso +x: qui viene riposizionata davanti, a meta' del percorso tipico
-% (il robot fa circa 1.4 m in 10 s).
-cfg.terreno.rampa_pos   = [-0.8, 0, 0.1];   % [m]
-cfg.terreno.rampa_gradi = 8;               % inclinazione attorno a +Y
+% Rampa di T4.
+% [MISURATO 22/9] PERCHE' I SEGNI DEI RIGID TRANSFORM DEL TERRENO SONO OPPOSTI.
+% Tutti i Rigid Transform del terreno (pavimento, rampa, ostacoli) hanno il
+% SOLIDO sulla porta B e il MONDO sulla porta F (ispeziona_rampa). L'offset
+% scritto nel blocco e' quindi la posa del mondo vista dal solido, e il solido
+% nel mondo sta nella posa INVERSA:  p = -R' * t,  rotazione R'.
+% Per le sole traslazioni vuol dire x e z col segno cambiato: e' la regola
+% trovata a tentativi su floor_off, z_spento e ost_dx.
+%
+% La rampa e' lo stesso cubo del pavimento (ProvaPianoImperfettoCube.stl,
+% 8 x 8 x 0.1 m) ruotato. Con la posa del collega [-0.8 0 0.1], +Y 8 gradi:
+% centro nel mondo a x = +0.81 m, superficie che esce dal pavimento a
+% x = 0.36 m e SALE di 8 gradi verso +x (verificato a occhio). Il segno
+% negativo di -0.8 era giusto: la rampa e' davanti.
+% La meta' posteriore del cubo resta sotto il pavimento. E' solo estetica: i
+% piedi non ci arrivano, e il contatto sopra il pavimento non cambia.
+%
+% [SCELTO 22/9] Spostata di 0.3 m in avanti, con lo stesso criterio di T5:
+% a 0.36 m il robot ci arrivava verso i 2 s, alla fine del transitorio. Ora
+% la superficie esce dal pavimento a x = 0.66 m.
+%
+% [CAMBIATO 22/9, sera] Non si scrive piu' l'offset del blocco ma DOVE la
+% rampa esce dal pavimento: l'offset lo calcola applica_terreno (posa_rampa)
+% per qualunque angolo. Serve alla ricerca dell'angolo limite, dove la rampa
+% deve cominciare sempre nello stesso punto. A 8 gradi la superficie sopra il
+% pavimento e' la stessa delle misure di T4 (stesso piano, stesso punto
+% d'uscita); cambia solo quanto cubo resta interrato.
+cfg.terreno.rampa_x_inizio = 0.66;         % [m, mondo] dove la superficie esce dal pavimento
+cfg.terreno.rampa_gradi    = 8;            % salita verso +x
+cfg.terreno.rampa_stl      = 'simscape\props\ProvaPianoImperfettoCube.stl';   % file originale del solido
+
+% [SCELTO 22/9] Dosso di T4D: salita, cima piana, discesa, poi di nuovo piano.
+% Geometria in dosso_profilo, STL scritto da applica_terreno('T4D').
+%   - stessa partenza e stessa pendenza di T4: la salita di T4D e' confrontabile
+%   - H 14 cm [CAMBIATO 22/9, era 12]: discesa di 1.0 m, quasi il doppio
+%     dell'ingombro del robot (~0.53 m fra piede piu' arretrato e piu' avanzato),
+%     quindi qualche ciclo con tutte e sei le zampe in discesa. 14 cm e' il
+%     massimo che sta nel pavimento (finisce a x = 4 m) tenendo partenza a
+%     0.66 m, cima di 0.6 m e ~2.5 cicli in piano dopo il dosso. L'altezza non
+%     cambia la difficolta' degli spigoli (dipende dall'angolo), allunga solo
+%     i tratti inclinati.
+%   - cima 0.6 m: il robot ci sta tutto per un tratto, le due transizioni in
+%     alto (salita->cima, cima->discesa) non si sovrappongono
+%   - larghezza 2 m: la deriva laterale misurata e' sotto i 0.3 m
+% Fondo della discesa a x ~ 3.25 m: a velocita' nominale ~27 s, da cui i 30 s
+% di script_T4D, che taglia l'analisi se un piede arriva al bordo del pavimento.
+cfg.terreno.dosso = struct('x_inizio', 0.66, 'H', 0.14, 'gradi_su', 8, ...
+                           'gradi_giu', 8, 'L_cima', 0.6, 'larghezza', 2, ...
+                           'spessore', 0.02);
 
 %% ===== terreno per task =====
 % I sette Rigid Transform degli ostacoli leggono terreno.off(:,k): quale
@@ -280,7 +324,8 @@ cfg.terreno.ost_dx.T5 = [-0.5 0 0 0 0 0 0];  % [m] uno per ostacolo
 cfg.terreno.task.T1 = [];         % piano
 cfg.terreno.task.T2 = [];         % piano, curva di velocita'
 cfg.terreno.task.T3 = [];         % piano, traiettoria curva
-cfg.terreno.task.T4 = [];         % rampa - DA DEFINIRE con il collega
+cfg.terreno.task.T4 = [];         % rampa (rampa_x_inizio, rampa_gradi)
+cfg.terreno.task.T4D = [];        % dosso: salita, cima, discesa (terreno.dosso)
 cfg.terreno.task.T5 = 1;          % ostacolo singolo
 cfg.terreno.task.T6 = 1:7;        % ostacoli multipli
 cfg.terreno.task.T7 = [];         % piano, disturbo impulsivo

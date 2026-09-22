@@ -278,7 +278,7 @@ statico ridotto da 0,9 a 0,4.
 | **T1** | piano, rettilineo, velocità nominale | liscio | **no** | riferimento di base |
 | **T2** | piano, rettilineo, **cinque velocità** | liscio | sull'avanzamento **no**, su energia e distacchi **sì** (§3) | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
 | **T3** | traiettoria curva, imbardata costante | liscio | poco: C2 +3 punti d'imbardata, stessi costi di T2 (§9) | C1 realizza il **15%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
-| **T4** | rampa, salita e discesa | liscio + rampa | **sì** | scenario del paper: terreno noto, corpo da tenere orizzontale |
+| **T4** | rampa di 8° in salita; **T4D**: dosso 14 cm, salita e discesa | liscio + rampa / dosso | salita a regime **no**, transizione **sì** (rollio −64%); discesa **sì, molto** — C1 lascia zampe appese, C2 no (§9) | nel paper la rampa è terreno noto e il corpo resta orizzontale (IK estesa, non implementata qui); da noi è ignota a entrambi |
 | **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** — misurato: rollio −52%, deriva annullata (§9) | scenario del paper: terreno **ignoto** |
 | **T6** | terreno irregolare, ostacoli multipli | pavimento + 7 ostacoli | **sì** — misurato: beccheggio 45° → 16°, C1 oltre soglia (§9) | stress test, corrisponde alla loro fig. 19b |
 | **T7** | disturbo impulsivo laterale | liscio | parziale | recupero dopo perturbazione |
@@ -571,6 +571,180 @@ scritto.
 **T3 è chiuso**, su C1 e C2. Resta aperta per entrambi i task solo l'origine
 del `pitch_rms` di C2 (offset o oscillazione), che `origine_beccheggio` separa.
 
+### [MISURATO] T4: in salita i due controllori si equivalgono, C2 vince nella transizione
+
+Rampa di 8° in salita, non nota al controllore, velocità nominale, 20 s.
+`script_T4`, una run per controllore. La rampa non finisce entro la run: si
+confronta il **regime in salita** con il **regime in piano** della stessa run,
+più la **transizione** fra i due (finestre in testa a `script_T4.m`).
+
+| | C1 | C2 | |
+|---|---|---|---|
+| pendenza misurata dagli appoggi | 7.97° | 8.00° | verifica della posa: 8° |
+| inclinazione del corpo in piano | +0.10° | +2.04° | offset noto di C2 |
+| inclinazione del corpo in salita | 8.19° | 10.36° | |
+| errore rispetto alla rampa (tolto l'offset) | +0.12° | +0.32° | entrambi paralleli |
+| beccheggio picco-picco in salita | 0.48° | 0.17° | |
+| **escursione di rollio in transizione** | **4.13°** | **1.48°** | **−64%** |
+| escursione di rollio in salita | 0.45° | 0.24° | |
+| sobbalzo del corpo in transizione (dal grafico) | ~+28 mm | ~+14 mm | circa la metà |
+| distanza corpo–superficie, salita − piano | −0.5 mm | +0.7 mm | |
+| velocità in salita / in piano | 0.98 | 0.96 | |
+| `tau_max` | 2.7 N·m | **13.7 N·m** | |
+| `potenza_max` | 29 W | 83 W | |
+| `cot` | 2.84 | 3.27 | +15% |
+
+**A regime la salita non discrimina.** Su una pendenza uniforme anche C1, in
+anello aperto, si allinea alla rampa entro 0.1°: il tripode in appoggio sta
+tutto sulla stessa superficie, e il corpo la segue perché la cinematica tiene
+costante la distanza piedi–corpo. Nessuno dei due tiene il corpo orizzontale,
+e non è un difetto: nessuno dei due conosce la pendenza. La tenuta orizzontale
+su terreno *noto* è la IK estesa del paper (§2, punto 1), che qui non è
+implementata.
+
+**Discrimina la transizione**, cioè il tratto in cui il robot ha zampe in
+piano e zampe sulla rampa: C2 riduce il rollio del 64% e dimezza il sobbalzo del
+corpo. È lo stesso meccanismo di T5 (appoggi a quote diverse fra le zampe),
+più debole perché il gradino è progressivo.
+
+**Il prezzo, come in T5 e T6.** `tau_max` di C2 è 13.7 N·m, 9 volte il
+datasheet dell'AX-12A. Anche C1 lo supera (2.7 N·m, 1.8 volte): è il primo
+task in cui succede, perché la salita carica le zampe anche senza ricerca del
+terreno.
+
+**Un indizio sull'offset di C2.** Nel grafico l'inclinazione di C2 sale da 0°
+a 2° fra 0.5 e 1.5 s, in piano, e il corpo si alza di ~5 mm nello stesso
+tratto. L'offset si forma nei primi appoggi e poi resta: utile per
+`origine_beccheggio`.
+
+**Come si misura:** l'appoggio è cinematico come in T5; la quota del
+pavimento è il 10 percentile degli appoggi, non la mediana (in T4 la maggior
+parte degli appoggi è sulla rampa). I sensori chiudono al 19% (C1) e 16% (C2)
+del peso, perché vedono solo il pavimento e il robot passa quasi tutta la run
+sulla rampa: colonne di contatto a `NaN`.
+
+**Limiti:** una run per controllore. La discesa è misurata a parte, in T4D.
+
+**La posa della rampa.** `ispeziona_rampa` ha seguito la catena dal solido al
+mondo: tutti i Rigid Transform del terreno hanno il **solido sulla porta B e il
+mondo sulla F**, quindi l'offset scritto nel blocco è la posa del mondo vista
+dal solido, e il solido sta nella posa inversa. È la causa della regola dei
+«segni opposti» trovata a tentativi su pavimento e ostacoli. La posa del
+collega (`[-0.8 0 0.1]`, +Y 8°) era giusta: rampa davanti, in salita. È stata
+spostata di 0.3 m in avanti con lo stesso criterio di T5 (la salita inizia a
+0.66 m invece che a 0.36, dopo il transitorio). La metà posteriore del cubo
+resta sotto il pavimento: si vede nell'animazione, ma i piedi non ci arrivano.
+
+### [MISURATO] T4: angolo limite di salita ~20° per entrambi
+
+`script_T4_limite`: griglia 10–30° e bisezione, criterio di «salita riuscita»
+dichiarato in testa a `script_T4` prima della ricerca (tutte le zampe sulla
+rampa, due cicli a regime, velocità ≥ metà di quella in piano, assetto entro
+30° rispetto alla rampa). Una run per angolo.
+
+| gradi | C1 v salita/piano | C2 v salita/piano | C1 `tau_max` | C2 `tau_max` | C1 rollio transiz. | C2 rollio transiz. |
+|---|---|---|---|---|---|---|
+| 10 | 0.98 | 0.95 | 2.5 | 14.1 | 5.4° | 1.9° |
+| 15 | 0.94 | 0.89 | 3.4 | 17.0 | 5.4° | 3.0° |
+| 20 | **0.77** ✓ | **0.50** ✓ | 5.3 | 22.0 | 7.2° | 3.4° |
+| 21 | 0.50 ✗ | 0.01 ✗ | 4.1 | 21.1 | 7.3° | 4.2° |
+| 21.5 | 0.16 ✗ | zampa RL mai sulla rampa ✗ | 4.3 | 19.9 | | |
+| 22.5 | −0.01 ✗ | 0.02 ✗ | 4.2 | 22.2 | | |
+| 25 / 30 | < 0 ✗ | zampe posteriori mai sulla rampa ✗ | 4.3 | 20 / 42 | | |
+
+**Limite del banco: 20° per entrambi**, fra 20 e 21. È una soglia netta, non
+una degradazione graduale: da 20 a 22.5° C1 passa da 0.77 a −0.01 (scivola
+indietro). I due casi al margine vanno dichiarati: C1 fallisce a 21° per
+0.005 sul criterio della velocità (0.495), C2 passa a 20° per 0.003 (0.503).
+Letto onestamente: **C1 ~21°, C2 ~20°, cioè lo stesso limite**.
+
+**La ricerca del terreno non sposta il limite.** Che sia uguale per i due
+controllori indica una causa comune a entrambi (aderenza, spazio di lavoro
+delle zampe o geometria del tripode), non il controllore. Non è verificata:
+`mu_plant = 0.9` darebbe un limite statico di ~42°, quindi non è la sola
+aderenza statica. Da non scrivere come causa senza una prova.
+
+**Dove C2 è peggio: rallenta prima.** A 20° C2 sale a metà velocità, C1 al 77%.
+Sopra il limite C2 si pianta al piede della rampa (le zampe posteriori non ci
+arrivano), C1 arriva sulla rampa e scivola indietro.
+
+**Dove C2 resta meglio: la transizione.** Il rollio nel passaggio piano→rampa
+è metà di quello di C1 a ogni angolo, come a 8° (T4).
+
+**Il prezzo cresce con la pendenza**, per entrambi: C1 da 2.5 a 5.3 N·m,
+C2 da 14 a 22 N·m (42 a 30°); `cot` di C2 da 3.4 a 5.3 fra 10 e 20°.
+
+**Limite realistico (`tau_max` ≤ 1.5 N·m del datasheet): sotto 10° per
+entrambi**, e già a 8° (T4) entrambi lo superavano. Sul robot vero con gli
+AX-12A nessuno dei due salirebbe queste rampe con questa andatura: il limite
+del banco va scritto come limite del modello con attuatori ideali.
+
+### [MISURATO] T4D: in discesa C1 lascia le zampe appese, C2 no
+
+Dosso di 14 cm non noto ai controllori: salita di 8° (come T4), cima piana di
+0.6 m, discesa di 8°, poi di nuovo piano. Velocità nominale, run da 30 s
+tagliata al bordo del pavimento. `script_T4D`, una run per controllore.
+La geometria (`dosso_profilo`) è scritta da `applica_terreno('T4D')` come STL
+e caricata nel solido della rampa, senza toccare il `.slx`.
+
+Le finestre si ricavano dalla posizione dei piedi rispetto ai quattro spigoli,
+non dal comportamento del corpo. «Spigolo convesso» = il terreno si abbassa
+sotto i piedi anteriori (inizio cima, inizio discesa).
+
+| finestra | rollio C1 → C2 | errore d'inclinazione max C1 → C2 | piedi fermi C1 → C2 |
+|---|---|---|---|
+| piano (riferimento) | 0.4° → 0.3° | 0.2° → 0.1° | 2.28 → 1.79 |
+| salita | 1.2° → 0.6° | 0.5° → 0.7° | 2.31 → 1.95 |
+| **inizio cima** | **5.9° → 0.9°** | 2.5° → 1.8° | **0.80 → 1.71** |
+| **inizio discesa** | **4.8° → 0.9°** | 2.5° → 1.3° | **0.90 → 1.79** |
+| **discesa** | **3.3° → 0.5°** | **3.5° → 1.0°** | 1.64 → 2.02 |
+| fondo discesa | 4.5° → 1.4° | 0.9° → 1.8° | 1.96 → 1.91 |
+
+| globali (run tagliata al bordo) | C1 | C2 | |
+|---|---|---|---|
+| `tau_max` | 3.1 N·m | **19.6 N·m** | 13 volte il datasheet |
+| `potenza_max` | 36 W | 105 W | |
+| `cot` | 2.95 | 3.16 | +7% |
+| beccheggio massimo | 11.4° | 10.7° | |
+| rollio massimo | 5.9° | 1.5° | |
+| velocità media | 0.128 m/s | 0.135 m/s | |
+
+**Il risultato più netto di T4.** Sugli spigoli convessi C1 perde due terzi
+dei piedi fermi rispetto al suo piano (2.28 → 0.8): le zampe anteriori vanno
+alla quota prevista, il terreno non c'è, e restano appese (visibile nel
+grafico come piedi 5–20 mm sopra il terreno per tratti lunghi). C2 ne perde il
+5%. È esattamente il fallimento che la retroazione del paper esiste per
+evitare (§2, «la zampa resta appesa perché il terreno è più basso del
+previsto»), ed è qui che la si vede lavorare.
+
+**Salita e discesa non sono simmetriche per C1.** In salita (T4) si allinea
+alla rampa; in discesa il rollio è quasi il triplo e l'inclinazione va oltre
+l'attesa (−11° contro −8°). Per C2 la differenza è piccola.
+
+**Cosa C2 non corregge.** Sugli spigoli convessi il corpo scende di ~11 mm con
+entrambi (`h_min`): C2 rimette a terra le zampe, ma non tiene la quota del
+corpo nel passaggio.
+
+**Come leggere i piedi fermi.** Anche in piano non sono 3: al cambio di tripode
+per un istante nessun piede è fermo. E C2 ne ha meno in piano (1.79) perché la
+ricerca del terreno muove il piede a ogni appoggio (§3). Il confronto è sulla
+variazione rispetto al proprio piano, non sul valore assoluto.
+
+**Il prezzo, come in T4–T6.** `tau_max` di C2 19.6 N·m, 13 volte il datasheet.
+Verificato che non viene dalla caduta al bordo: con la run tagliata resta.
+
+**Limiti.** Una run per controllore. Deviazione e imbardata finali **non** sono
+un risultato: con il dosso da 12 cm C1 era uscito girato di 11° e spostato di
+28 cm, con quello da 14 cm dritto (−0.1°, 4.5 cm). Rollio, errore
+d'inclinazione e piedi fermi sono invece coerenti fra le due run.
+
+**Il bordo del pavimento.** Il pavimento è il cubo 8 × 8 (x fino a 4 m), e C2,
+più veloce, ci arrivava negli ultimi 2 s e cadeva (corpo −95 mm, beccheggio
+−18°). La prima versione tagliava solo le finestre; ora la run intera è
+troncata al primo piede oltre x = 3.95 m prima di `metriche` (colonna
+`t_bordo`). `cfg.floor_dim = [4 4 0.05]` non descrive la mesh del pavimento:
+da correggere o da commentare.
+
 ### [MISURATO] T5: sull'ostacolo C2 dimezza il rollio e annulla la deriva
 
 Ostacolo 1, ~30 mm, spostato 0.5 m in avanti rispetto al `.slx` (vedi sotto),
@@ -618,9 +792,10 @@ dopo la discesa, che sono comportamento suo: il confronto non sfavorisce C2.
 partenza: il robot ci arrivava a 1.2 s, prima della fine del transitorio.
 `cfg.terreno.ost_dx.T5 = [-0.5 0 ...]` lo sposta di 0.5 m in avanti a runtime,
 senza toccare il modello; ora il robot ci arriva a ~5 s. Il segno è negativo
-perché i Rigid Transform degli ostacoli hanno x e z opposte al mondo (catena
-del pavimento ruotata di 180° attorno a Y) — misurato: con +0.5 l'ostacolo si
-avvicinava. Le escursioni di C1 non cambiano con la posizione (8.0°/8.7° prima,
+perché i Rigid Transform degli ostacoli hanno x e z opposte al mondo — misurato:
+con +0.5 l'ostacolo si avvicinava. [CORRETTO] Avevo attribuito la cosa a una
+catena del pavimento ruotata di 180°: la causa vera è il solido montato sulla
+porta B (vedi T4). Le escursioni di C1 non cambiano con la posizione (8.0°/8.7° prima,
 8.2°/8.6° dopo).
 
 **Un difetto trovato per strada.** La riscrittura di `applica_terreno` cercava
@@ -628,10 +803,9 @@ i Rigid Transform per nome (`Rigid Transform_Ostacolo1`), ma nel modello si
 chiamano `Rigid⏎Transform10` — con un a capo dentro il nome. `set_param`
 falliva e un `catch` vuoto lo nascondeva: le sezioni sulla posa degli ostacoli
 non hanno mai applicato niente. Ora il blocco si trova seguendo il collegamento
-del solido, e ogni fallimento viene segnalato anche senza `verbose`. **La
-rampa ha lo stesso difetto ed è stata lasciata com'è di proposito**: la posa
-di `cfg` non è mai stata applicata, e agganciarla sposterebbe la rampa in una
-posizione mai verificata. Da decidere prima di T4.
+del solido, e ogni fallimento viene segnalato anche senza `verbose`. La
+rampa aveva lo stesso difetto, ma la sua posa in `cfg` coincideva con quella
+salvata nel `.slx`: ora è agganciata allo stesso modo (vedi T4).
 
 ### [MISURATO] T6: C1 supera la soglia di assetto, C2 no
 
@@ -736,10 +910,9 @@ contatto è rifiutato da Simulink.
   `cfg.lt`/`cfg.foot_offset`, la traslazione delle sei sfere — più una
   ritaratura di `z0`. **Va deciso prima della campagna, non durante**, e va
   scritto in relazione come scelta di modellazione.
-- **Rampa (T4)**: rifatta dal collega (commit del 17 e 20/9), con blocchi e
-  contatti dedicati. Da verificare: `rampa_pos` è passato a `[-0.8, 0, 0.1]`,
-  mentre il commento in `phantomx_config` dice ancora «riposizionata davanti»
-  — con il robot che avanza verso +x, −0.8 è dietro.
+- ~~**Rampa (T4)**~~ — **chiuso**: −0.8 nell'offset del blocco è *davanti*
+  nel mondo (solido sulla porta B, vedi T4). Resta solo estetica la metà del
+  cubo sotto il pavimento.
 - **Ostacoli 4–7**: poggiano sui rilievi del terreno imperfetto (da +35 a
   +71 mm). Il vecchio T6 usava il pavimento imperfetto per questo; il nuovo
   `applica_terreno` usa `pavimento` per tutti i task. **Da verificare a occhio**

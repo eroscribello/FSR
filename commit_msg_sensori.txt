@@ -1,4 +1,4 @@
-feat(misure): forze dai sensori, T2 rifatto, T3 T5 T6 chiusi
+feat(misure): forze dai sensori, T2 rifatto, T3 T4 T4D T5 T6 chiusi
 
 FORZE DI CONTATTO DAI SENSORI
 adatta_simscape legge ora Fleg, i sensori aggiunti nel modello il 17/9.
@@ -74,7 +74,18 @@ un catch vuoto, e la posa degli ostacoli non e' mai stata applicata dalla
 riscrittura. Ora il blocco si trova dal collegamento del solido, e i
 fallimenti si segnalano sempre. cfg.terreno.ost_dx.T5 sposta l'ostacolo 1 di
 0.5 m in avanti (segno negativo: x dei Rigid Transform opposta al mondo).
-La rampa ha lo stesso difetto ed e' lasciata com'e': da decidere prima di T4.
+La rampa ora si trova allo stesso modo.
+
+RAMPA DI T4: I SEGNI "INVERTITI" HANNO UNA CAUSA
+ispeziona_rampa (nuovo, non simula) segue la catena dal solido al mondo:
+tutti i Rigid Transform del terreno hanno il solido sulla porta B e il mondo
+sulla F, quindi l'offset e' la posa del mondo vista dal solido. E' la regola
+dei segni opposti trovata a tentativi su pavimento e ostacoli. La posa del
+collega era giusta: rampa davanti al robot, in salita (anche a occhio).
+Spostata di 0.3 m in avanti come l'ostacolo di T5: esce dal pavimento a
+0.66 m invece che a 0.36, dopo il transitorio. Il pezzo di cubo sotto il
+pavimento resta: e' solo estetico. script_T4 nuovo: regime in salita contro
+regime in piano, pendenza ricavata dagli appoggi come verifica della posa.
 
 .gitignore: IL MOTIVO PER CUI LE CACHE TORNAVANO
 Nove pattern avevano il commento sulla stessa riga ("slprj/   # cache ...").
@@ -92,9 +103,43 @@ DOCUMENTAZIONE
 - archivio/README: mappa_contatti e quota_terreno non piu' chiamati dopo la
   riscrittura di applica_terreno, archiviati.
 
+T4: IN SALITA SI EQUIVALGONO, C2 VINCE NELLA TRANSIZIONE
+Rampa di 8 gradi non nota ai controllori. A regime anche C1 si allinea alla
+rampa entro 0.1 gradi (il tripode sta tutto sulla stessa superficie): la
+salita uniforme non discrimina. Discrimina il tratto con zampe in piano e zampe
+sulla rampa: rollio 4.1 -> 1.5 gradi, sobbalzo del corpo dimezzato. Pendenza
+ricavata dagli appoggi 7.97 / 8.00 gradi: posa verificata. Prezzo: tau_max di
+C2 13.7 N*m, 9 volte il datasheet; anche C1 lo supera (2.7). cot +15%.
+Una run per controllore.
+
+T4 LIMITE: ~20 GRADI PER ENTRAMBI
+script_T4_limite, griglia e bisezione su un criterio dichiarato prima. Sale a
+20, non a 21, per C1 e per C2 (entrambi al margine del criterio di velocita':
+C1 0.495 a 21, C2 0.503 a 20). Stesso limite: causa comune, non il
+controllore - da non attribuire senza prova. C2 rallenta prima (0.50 contro
+0.77 a 20) e sopra il limite si pianta al piede della rampa; in transizione
+resta a meta' rollio. Limite realistico (tau <= 1.5 N*m) sotto 10 gradi per
+entrambi.
+
+T4D: IN DISCESA C1 LASCIA LE ZAMPE APPESE, C2 NO
+Dosso di 14 cm (salita 8, cima 0.6 m, discesa 8) scritto come STL da
+applica_terreno('T4D') e caricato nel solido della rampa, .slx intatto.
+Sugli spigoli convessi C1 scende da 2.3 a 0.8 piedi fermi, C2 resta a ~1.7
+(suo piano 1.8); rollio 5.9 -> 0.9 gradi, in discesa 3.3 -> 0.5. E' il
+fallimento per cui esiste la retroazione del paper. Il corpo cala di ~11 mm
+sugli spigoli con entrambi. tau_max C2 19.6 N*m (13x). Deviazione e
+imbardata non riproducibili fra due geometrie: non sono un risultato.
+La run si taglia al bordo del pavimento prima di metriche: C2, piu' veloce,
+ci cadeva e sporcava le metriche globali.
+script_T4 accetta l'angolo da fuori, ha un criterio di salita dichiarato e
+non si ferma col fallimento; script_T4_limite cerca l'angolo limite (da
+lanciare). appoggio_cinematico e dosso_profilo nuovi.
+
 APERTI
 - pitch_rms di C2 ~0.03 rad quasi costante: offset o oscillazione?
-  origine_beccheggio da lanciare.
-- rampa_pos [-0.8 0 0.1] contro il commento "davanti al robot".
-- T4: la posa della rampa da cfg non e' mai stata applicata.
+  origine_beccheggio da lanciare. Indizio da T4: si forma in piano fra 0.5 e
+  1.5 s, nei primi appoggi, e poi resta.
+- T4 limite: causa del limite comune a C1 e C2 non verificata.
+- cfg.floor_dim [4 4 0.05] non corrisponde al pavimento (cubo 8 x 8).
+- rampa: parte sotto il pavimento visibile nell'animazione (estetica).
 - sensori di forza: aggiungere i contatti di ostacoli e rampa a Fleg.

@@ -57,6 +57,8 @@ T2_runs.mat
 results/**/*.mat
 results/**/*.png
 results/**/*.fig
+# STL del dosso di T4D: lo scrive applica_terreno('T4D') a ogni chiamata
+simscape/props/T4D_dosso.stl
 # vecchio nome, sostituito da T2_<controllore>.csv
 risultati.csv
 *.mp4
