@@ -93,6 +93,9 @@ t4_ctrl       = t4_nome_ctrl(t4_c2);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T4', false, t4_mdl, struct('rampa_gradi', t4_gradi));
+% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+% (script_T4_limite chiama questo script, quindi eredita la correzione.)
+applica_inerzie(t4_mdl);
 
 fprintf('\nT4: controllore %s, rampa di %g gradi, %g s a velocita'' nominale\n', ...
         t4_ctrl, t4_gradi, t4_dur);

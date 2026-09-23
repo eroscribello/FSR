@@ -1,0 +1,59 @@
+fix(modello): inerzie dei 25 solidi corrette a runtime, campagne da rifare
+
+LE INERZIE NEL .SLX SONO ~1000 VOLTE TROPPO GRANDI
+Vengono dall'URDF e non sono mai state ricontrollate. Il corpo (1 kg,
+25 x 20 cm) ha [3.11 6.38 5.33] kg*m^2: sarebbe una massa a 1.7 m dal
+centro. Ogni link delle zampe (24 g, 6-15 cm) ha ~5e-3 kg*m^2, come
+un'asta da mezzo metro. Le masse invece sono giuste, quindi in animazione
+l'andatura sembra corretta: il robot pesa il giusto, e' solo mille volte
+piu' difficile da ruotare.
+
+MISURATO, NON SUPPOSTO (results/prova_inerzie*.csv)
+prova_inerzie.m lancia la stessa run due volte, con le inerzie del file e
+con quelle corrette, senza mai salvare il modello.
+
+T2 1x C1   moto quasi identico, tau_max -5%, energia e cot -62%
+T6 C1      beccheggio 45.1 -> 14.7 gradi, rollio 30.9 -> 7.0
+T6 C2      tau_max 26.5 -> 9.46 N*m, cot 5.30 -> 1.95
+cot C2/C1  1.35 -> 0.68
+
+Cambiano le CONCLUSIONI, non solo i valori: in T6 C1 non supera piu' la
+soglia di assetto di 30 gradi, e C2 da piu' caro di C1 diventa piu'
+economico. Ritiro anche la frase "C2 arriva a 13-18 volte il datasheet
+dell'AX-12A, probabilmente e' reale": buona parte di quelle coppie serviva
+a muovere inerzie inventate.
+
+C2 e' il piu' colpito perche' la ricerca del terreno butta giu' la zampa in
+fretta: con zampe mille volte piu' inerti quel movimento costa carissimo.
+C1 non lo fa.
+
+COSA ENTRA NEL REPO
+applica_inerzie.m      mette i valori corretti IN MEMORIA nei 25 solidi
+                       (corpo + 24 link), come applica_terreno. Nessun
+                       save_system: il .slx resta quello del collega.
+                       Modo 'controlla' per guardare senza scrivere.
+                       Se i solidi non sono esattamente 25 si ferma:
+                       correggerne 24 in silenzio sarebbe peggio.
+controllo_inerzie.m    le tre verifiche da fare PRIMA di rifare le
+                       campagne, con i criteri scritti prima di lanciare:
+                       1. i sensori di forza chiudono sul peso (entro 5%)
+                       2. le firme della ricerca di terreno di C2 ci sono
+                          ancora (corpo >= 2 mm piu' alto di C1 e cot
+                          maggiore): se spariscono, la soglia t_threshold
+                          va ritarata prima, non dopo
+                       3. run sane: successo, frazione del task +-20%,
+                          nessun ribaltamento, tempo di calcolo
+prova_inerzie.m        il confronto A/B che ha prodotto i numeri sopra
+script_T2..T6          chiamano applica_inerzie subito dopo applica_terreno
+
+Il collega e' d'accordo a rifare i test con le inerzie corrette. Resta
+aperto solo dove sta la correzione (.slx sistemato da lui oppure runtime):
+i numeri sono gli stessi, e se il .slx verra' corretto basta togliere una
+riga dagli script.
+
+DA QUI IN POI
+I CSV di T2-T6 in results/ sono ancora quelli con le inerzie originali e
+verranno sovrascritti: le sezioni [MISURATO] di docs/piano_confronto.md
+hanno in testa l'avviso "da rifare con le inerzie corrette". Ordine:
+controllo_inerzie, poi T2 -> T3 -> T4 -> T4 limite -> T4D -> T5 -> T6 con
+C1 e C2, poi riscrittura delle sezioni e della tabella riassuntiva.

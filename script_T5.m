@@ -80,6 +80,8 @@ t5_ctrl      = t5_nome_ctrl(t5_c2);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T5', false, t5_mdl);
+% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+applica_inerzie(t5_mdl);
 
 fprintf('\nT5: controllore %s, ostacolo singolo, %g s a velocita'' nominale\n', ...
         t5_ctrl, t5_dur);

@@ -40,6 +40,11 @@ t2_etichette = cell(1, numel(t2_fatt));
 % Il terreno si fissa qui: ereditarlo dalla chiamata precedente ha gia'
 % fatto girare una campagna T2 sul gradino di T5.
 applica_terreno('T2', false, t2_mdl);
+% [23/9] Inerzie corrette in memoria (il .slx non viene salvato): quelle nel
+% file vengono dall'URDF e sono ~1000 volte troppo grandi. Vedi applica_inerzie
+% e docs/piano_confronto.md sezione 9. Se il collega correggera' il .slx questa
+% riga diventa inutile e si toglie.
+applica_inerzie(t2_mdl);
 
 t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);
 if t2_haTar

@@ -74,6 +74,8 @@ t4d_ctrl       = 'C1';  if t4d_c2, t4d_ctrl = 'C2'; end
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T4D', false, t4d_mdl);
+% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+applica_inerzie(t4d_mdl);
 t4d_G = dosso_profilo(t4d_cfg.terreno.dosso, t4d_cfg.floor_top);
 
 fprintf(['\nT4D: controllore %s, dosso %g/%g gradi, H %.0f mm, cima %.2f m, ' ...

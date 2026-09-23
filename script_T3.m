@@ -47,6 +47,8 @@ t3_etichette = {};
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T3', false, t3_mdl);
+% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+applica_inerzie(t3_mdl);
 
 fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_nome_ctrl(t3_c2));
 

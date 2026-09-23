@@ -390,6 +390,86 @@ numeri non saranno confrontabili fra loro.
 
 ## 9. Stato tecnico e cose aperte
 
+### [MISURATO 22/9] Le inerzie del modello sono ~1000 volte troppo grandi
+
+Nel `.slx` i momenti d'inerzia vengono dall'URDF e sono letti come kg·m², ma
+valgono circa mille volte il vero. Le **masse sono giuste**.
+
+| corpo | massa | nel modello | valore fisico plausibile |
+|---|---|---|---|
+| `MP_BODY` | 0.976 kg | [3.11, 6.38, 5.33] kg·m² | `cfg.I_body` = [3.6, 5.2, 8.6]·10⁻³ |
+| ciascuno dei 24 link | 0.024 kg | [5.1, 8.2, 1.1]·10⁻³ | ~10⁻⁵ |
+
+Il corpo si comporta come se la sua massa stesse a 1.7 m dal centro, ogni link
+come un'asta da mezzo metro. Per il corpo il valore plausibile torna con il
+conto a mano di un parallelepipedo da 1 kg e 25 × 20 × 5 cm.
+
+**Perché non si vedeva:** in C1 e C2 i giunti sono comandati **in posizione**.
+Il simulatore impone la traiettoria qualunque sia l'inerzia, quindi l'andatura
+in animazione è corretta. Cambiano le coppie registrate e la reazione del corpo.
+
+**Due prove, inerzie originali contro corrette** (`prova_inerzie.m`,
+`results/prova_inerzie*.csv`, una run per caso):
+
+| | T2 1× C1 | T6 C1 | T6 C2 |
+|---|---|---|---|
+| `tau_max` | 1.96 → 1.87 | 6.98 → 7.51 | **26.5 → 9.46** |
+| energia | 50.4 → 18.6 J | 196 → 109 J | 303 → 104 J |
+| `cot` | 2.32 → 0.89 | 3.93 → 2.86 | **5.30 → 1.95** |
+| beccheggio max | 0.17° → 0.51° | **45.1° → 14.7°** | 14.4° → 22.6° |
+| rollio max | 0.39° → 0.21° | **30.9° → 7.0°** | 8.1° → 9.4° |
+| velocità media | 0.140 → 0.135 | 0.106 → 0.079 | 0.122 → 0.114 |
+
+**Le inerzie cambiano le conclusioni, non solo i valori assoluti:**
+
+- C1 in T6 **non supera più** la soglia di assetto dei 30°;
+- il vantaggio di C2 sull'assetto in T6 **si inverte** (22.6° contro 14.7°);
+- `tau_max` di C2 passa da 18 a ~6 volte il datasheet: **ritirato** quanto
+  scritto nelle sezioni T4–T6 sul «13–18 volte»;
+- il rapporto `cot` C2/C1 in T6 passa da **1.35 a 0.68**: con le inerzie
+  corrette C2 consuma **meno** di C1, non di più.
+
+Perché C2 è il più colpito: la ricerca del terreno muove la zampa verso il
+basso rapidamente, e con zampe mille volte più inerti quel movimento costa
+coppie enormi. C1 non fa quel movimento.
+
+**Limiti di queste prove:** una run per caso; deviazione e imbardata non sono
+confrontabili (variano da sola a sola run, visto in T4D). Le colonne su cui si
+ragiona sono coppie, energia, cot e assetto massimo.
+
+**Stato e strumenti**
+
+- `applica_inerzie.m` mette i valori corretti **in memoria**, come
+  `applica_terreno`: il `.slx` resta quello del collega e le inerzie originali
+  restano nel file.
+- `controllo_inerzie.m` verifica, prima di rifare le campagne, che le tarature
+  fatte con le inerzie vecchie reggano: chiusura dei sensori sul peso, firme
+  della ricerca di terreno di C2 (soglia `t_threshold`), run sane.
+- **[DECISO 23/9]** il collega è d'accordo a **rifare i test con le inerzie
+  corrette**. Resta aperto solo *dove* sta la correzione: `.slx` sistemato da
+  lui, oppure correzione a runtime con `applica_inerzie`. Le due strade danno
+  gli stessi numeri, quindi la campagna non aspetta questa decisione: si parte
+  con la correzione a runtime e, se il `.slx` verrà corretto, basta togliere
+  una riga dagli script (la chiamata è idempotente, non fa danni nemmeno se il
+  file è già a posto).
+- **Ordine di lavoro deciso** (uno per volta, non si salta):
+  1. `controllo_inerzie` — le tre verifiche. Se la **verifica 2** non passa, la
+     soglia di contatto di C2 (`t_threshold`) va ritarata *prima*: rifare le
+     campagne con una soglia che non scatta più significherebbe confrontare C1
+     con un C2 che non cerca il terreno.
+  2. campagne nell'ordine T2 → T3 → T4 → T4 limite → T4D → T5 → T6, C1 e C2.
+  3. riscrittura delle sezioni `[MISURATO]` che seguono e della tabella
+     riassuntiva.
+- **Dove è già attiva:** `script_T2`, `script_T3`, `script_T4` (e quindi
+  `script_T4_limite`), `script_T4D`, `script_T5`, `script_T6` chiamano
+  `applica_inerzie` subito dopo `applica_terreno`. **Da qui in poi ogni run di
+  campagna è con le inerzie corrette**: i CSV in `results/` vengono
+  sovrascritti, quindi i numeri vecchi vanno archiviati (git, oppure
+  `results/inerzie_URDF/`) prima di lanciare.
+- Finché le sezioni non sono riscritte, **i numeri di T2–T6 qui sotto sono
+  ancora quelli con le inerzie originali**.
+
+
 Non sono voci di piano, sono debiti noti. Elencati perché non si perdano.
 
 ### Risultato chiuso: C1 scivola, e si vede nella velocità
@@ -573,6 +653,9 @@ del `pitch_rms` di C2 (offset o oscillazione), che `origine_beccheggio` separa.
 
 ### [MISURATO] T4: in salita i due controllori si equivalgono, C2 vince nella transizione
 
+> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
+
+
 Rampa di 8° in salita, non nota al controllore, velocità nominale, 20 s.
 `script_T4`, una run per controllore. La rampa non finisce entro la run: si
 confronta il **regime in salita** con il **regime in piano** della stessa run,
@@ -637,6 +720,9 @@ resta sotto il pavimento: si vede nell'animazione, ma i piedi non ci arrivano.
 
 ### [MISURATO] T4: angolo limite di salita ~20° per entrambi
 
+> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
+
+
 `script_T4_limite`: griglia 10–30° e bisezione, criterio di «salita riuscita»
 dichiarato in testa a `script_T4` prima della ricerca (tutte le zampe sulla
 rampa, due cicli a regime, velocità ≥ metà di quella in piano, assetto entro
@@ -680,6 +766,9 @@ AX-12A nessuno dei due salirebbe queste rampe con questa andatura: il limite
 del banco va scritto come limite del modello con attuatori ideali.
 
 ### [MISURATO] T4D: in discesa C1 lascia le zampe appese, C2 no
+
+> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
+
 
 Dosso di 14 cm non noto ai controllori: salita di 8° (come T4), cima piana di
 0.6 m, discesa di 8°, poi di nuovo piano. Velocità nominale, run da 30 s
@@ -747,6 +836,9 @@ da correggere o da commentare.
 
 ### [MISURATO] T5: sull'ostacolo C2 dimezza il rollio e annulla la deriva
 
+> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
+
+
 Ostacolo 1, ~30 mm, spostato 0.5 m in avanti rispetto al `.slx` (vedi sotto),
 velocità nominale, 20 s. `script_T5`, una run per controllore.
 
@@ -808,6 +900,9 @@ rampa aveva lo stesso difetto, ma la sua posa in `cfg` coincideva con quella
 salvata nel `.slx`: ora è agganciata allo stesso modo (vedi T4).
 
 ### [MISURATO] T6: C1 supera la soglia di assetto, C2 no
+
+> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
+
 
 Pavimento + sette ostacoli, disposizione del modello (nessuno spostamento),
 velocità nominale, 30 s. `script_T6`, cioè `script_T5` con lo stesso metodo;
