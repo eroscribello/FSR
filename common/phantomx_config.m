@@ -357,7 +357,18 @@ cfg.dist.F     = cfg.dist.frac * cfg.mass * cfg.g;
 % z0 = 0.14 contro la soglia z_nom - tol = 0.138 - scendendo di z_ext_max a
 % v_search. E' il contrario dell'anello aperto.
 cfg.c2.attiva     = true;    % false = C1, anello aperto vero
-cfg.c2.soglia_tau = 0.5;     % [N*m] soglia del flag di contatto
+% [MISURATO 23/9] LA SOGLIA NON E' UNO SCALARE, E NON E' 0.5.
+% Nel modello il confronto e' fatto da un Relational Operator fra un Mux di
+% tre coppie (coxa, femore, tibia) e il Constant [0.04 0.1 0.1]: una soglia
+% PER GIUNTO. Il flag di contatto della zampa e'
+%     cont = OR( |tau_misurata - tau_attesa| > soglia )  sui tre giunti,
+% quindi basta un giunto fuori tolleranza per dichiarare contatto. E' la
+% forma del paper (Arrigoni et al. §5), non una soglia di coppia secca.
+% Il valore 0.5 che stava qui prima NON e' mai arrivato al modello: init_gait
+% calcolava c2_soglia e nessun blocco la leggeva (verificato con
+% trova_nel_modello e Simulink.findVars il 23/9). Adesso il Constant vale
+% c2_soglia e questo e' il valore vero, quindi il comportamento non cambia.
+cfg.c2.soglia_tau = [0.04 0.1 0.1];   % [N*m] coxa, femore, tibia
 
 % Parametri della ricerca del terreno (Arrigoni et al. §5). Erano cablati
 % dentro i due blocchi MATLAB Function, quindi invisibili a git e duplicati:

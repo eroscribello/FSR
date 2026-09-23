@@ -8,20 +8,33 @@
 % PERCHE' PROPRIO LA SOGLIA
 %   Dei sei parametri di C2, cinque non dipendono dalle inerzie: v_search,
 %   z_ext_max, z_nom e tol sono comandi in posizione e geometria, t_reset e'
-%   un tempo. L'unico che confronta una COPPIA MISURATA con un numero fisso e'
-%   cfg.c2.soglia_tau = 0.5 N*m. Correggendo le inerzie le coppie in volo sono
+%   un tempo. L'unico che confronta COPPIE MISURATE con numeri fissi e' la
+%   soglia del flag di contatto. Correggendo le inerzie le coppie sono
 %   crollate, quindi quella soglia non significa piu' quello che significava.
-%   Nota: nessuno di questi valori l'abbiamo tarato noi. Erano cablati nei due
-%   blocchi MATLAB Function del modello; li abbiamo solo portati in cfg.
+%
+% [23/9] LA SOGLIA E' UN VETTORE, E IL PRIMO GIRO DI QUESTA SPAZZATA ERA NULLO
+%   La prima versione spazzava cfg.c2.soglia_tau = 0.5 e le tre run uscivano
+%   IDENTICHE alla quindicesima cifra: c2_soglia era calcolata da init_gait e
+%   nessun blocco la leggeva. Cercandola nel modello e' saltato fuori che il
+%   confronto e' fra un Mux di tre coppie e il Constant [0.04 0.1 0.1], cioe'
+%   una soglia PER GIUNTO, e che il flag e'
+%       cont = OR( |tau_misurata - tau_attesa| > soglia )  sui tre giunti.
+%   Adesso quel Constant vale c2_soglia e cfg porta il valore vero.
+%   Si spazza quindi un MOLTIPLICATORE del vettore, non un valore in N*m:
+%   spazzare tre soglie indipendenti richiederebbe 27 run per dire la stessa
+%   cosa.
 %
 % I CRITERI, SCRITTI PRIMA DI LANCIARE
-%   1. LA SOGLIA CONTA se fra 0.3 e 0.8 N*m almeno una fra roll_max,
-%      dev_lat_max e cot cambia di piu' del 20%.
-%   2. LO SVANTAGGIO E' DI TARATURA se a qualche soglia C2 rientra entro il
-%      20% di C1 (riga di campagna, results/T4D_C1.csv e T5_C1.csv) sia su
-%      dev_lat_max sia su roll_max.
-%   3. Se la 1 e' falsa, oppure la 1 e' vera ma la 2 e' falsa a tutte e tre le
-%      soglie, lo svantaggio di C2 e' STRUTTURALE: si dichiara e non si ritara.
+%   1. LA SOGLIA CONTA se fra 0.5x e 2x almeno una fra roll_max, dev_lat_max
+%      e cot cambia di piu' del 20%. Se non cambia NULLA (righe identiche a
+%      molte cifre) il collegamento e' di nuovo rotto: non e' un risultato,
+%      e' un esperimento fallito.
+%   2. LO SVANTAGGIO E' DI TARATURA se a qualche moltiplicatore C2 rientra
+%      entro il 20% di C1 (riga di campagna, results/T4D_C1.csv e T5_C1.csv)
+%      sia su dev_lat_max sia su roll_max.
+%   3. Se la 1 e' falsa, oppure la 1 e' vera ma la 2 e' falsa a tutti e tre i
+%      moltiplicatori, lo svantaggio di C2 e' STRUTTURALE: si dichiara e non
+%      si ritara.
 %
 % COSA NON TOCCA
 %   Non sovrascrive nessun CSV di campagna e nessuna figura: scrive solo
@@ -36,10 +49,14 @@
 
 sp_cfg  = phantomx_config();
 sp_mdl  = 'phantomx_sim_zero';
-sp_sog  = [0.3 0.5 0.8];               % [N*m]  0.5 e' il valore di campagna
+sp_molt = [0.5 1 2];                   % moltiplicatori: 1 = valore di campagna
 sp_task = {'T4D', 30                   % task, durata [s] (come script_T4D)
            'T5',  20};                 %                  (come script_T5)
 sp_xbordo = 4 - 0.05;                  % bordo del pavimento 8x8, come in T4D
+
+sp_base = reshape(sp_cfg.c2.soglia_tau, 1, []);
+if isscalar(sp_base), sp_base = repmat(sp_base, 1, 3); end
+fprintf('\nsoglia di riferimento (cfg.c2.soglia_tau) = %s N*m\n', mat2str(sp_base, 4));
 
 if bdIsLoaded(sp_mdl) && strcmp(get_param(sp_mdl,'Dirty'),'on')
     error('spazzata_soglia:dirty', ['Il modello e'' aperto con modifiche non ' ...
@@ -57,18 +74,20 @@ try
         applica_terreno(sp_t, false, sp_mdl);
         applica_inerzie(sp_mdl);
 
-        for sp_j = 1:numel(sp_sog)
-            fprintf('\n---- %s, C2, soglia %.2f N*m ----\n', sp_t, sp_sog(sp_j));
+        for sp_j = 1:numel(sp_molt)
+            sp_s = sp_molt(sp_j) * sp_base;
+            fprintf('\n---- %s, C2, soglia %.2fx = %s ----\n', sp_t, ...
+                    sp_molt(sp_j), mat2str(sp_s, 4));
 
             OVERRIDE_C2        = true;                         %#ok<NASGU>
-            OVERRIDE_C2_SOGLIA = sp_sog(sp_j);                 %#ok<NASGU>
+            OVERRIDE_C2_SOGLIA = sp_s;                         %#ok<NASGU>
             clear OVERRIDE_GAIT                                % andatura nominale
             init_gait
 
             sp_out = sim(sp_mdl, 'StopTime', num2str(sp_dur));
             sp_run = adatta_simscape(sp_out, struct( ...
                          'controller','C2', 'task',sp_t, 'run',1, ...
-                         'condizione', sprintf('soglia%.2f', sp_sog(sp_j)), ...
+                         'condizione', sprintf('soglia%.2fx', sp_molt(sp_j)), ...
                          'vel_d', [sp_cfg.v_nom 0]));
 
             % T4D: la run si taglia al bordo del pavimento PRIMA delle
@@ -83,8 +102,11 @@ try
             end
 
             sp_riga = metriche(sp_run, sp_cfg, struct('t_regime', 2*sp_cfg.T));
-            sp_riga.soglia_tau = sp_sog(sp_j);
-            sp_riga.t_bordo    = sp_bordo;
+            sp_riga.molt       = sp_molt(sp_j);
+            sp_riga.soglia_coxa = sp_s(1);
+            sp_riga.soglia_fem  = sp_s(2);
+            sp_riga.soglia_tib  = sp_s(3);
+            sp_riga.t_bordo     = sp_bordo;
             SP = [SP; sp_riga];                                %#ok<AGROW>
         end
     end
@@ -110,8 +132,8 @@ for sp_i = 1:size(sp_task,1)
     sp_C1 = sp_leggi_c1(sp_t);
 
     fprintf('\n--- %s ---\n', sp_t);
-    fprintf('  %-14s', 'soglia [N*m]');
-    fprintf('%12.2f', sp_S.soglia_tau);
+    fprintf('  %-14s', 'moltiplicatore');
+    fprintf('%12.2f', sp_S.molt);
     fprintf('%14s\n', 'C1 campagna');
     for sp_k = 1:numel(sp_col)
         sp_c = sp_col{sp_k};
@@ -143,11 +165,11 @@ for sp_i = 1:size(sp_task,1)
         for sp_j = 1:height(sp_S)
             sp_a = abs(sp_S.dev_lat_max(sp_j)) <= 1.2*abs(sp_C1.dev_lat_max(1));
             sp_b = abs(sp_S.roll_max(sp_j))    <= 1.2*abs(sp_C1.roll_max(1));
-            if sp_a && sp_b, sp_rec = true; sp_qual = sp_S.soglia_tau(sp_j); end
+            if sp_a && sp_b, sp_rec = true; sp_qual = sp_S.molt(sp_j); end
         end
     end
     fprintf('  2. C2 rientra entro il 20%% di C1: %s', sp_si(sp_rec));
-    if sp_rec, fprintf('  (a soglia %.2f N*m)', sp_qual); end
+    if sp_rec, fprintf('  (a %.2fx la soglia di campagna)', sp_qual); end
     fprintf('\n');
 
     if sp_conta && sp_rec

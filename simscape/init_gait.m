@@ -183,20 +183,33 @@ if exist('OVERRIDE_C2','var') && ~isempty(OVERRIDE_C2)
 end
 
 % [23/9] Soglia di rilevazione del contatto, per la spazzata di sensibilita':
-%     OVERRIDE_C2_SOGLIA = 0.3;   init_gait;   sim(...)
+%     OVERRIDE_C2_SOGLIA = 2 * cfg.c2.soglia_tau;   init_gait;   sim(...)
 % Vale lo stesso motivo di OVERRIDE_C2: cfg viene ricostruita a ogni sim
 % (init_gait e' l'InitFcn), quindi assegnare c2_soglia fuori da qui non serve.
 % E' l'UNICO parametro di C2 che dipende dalle inerzie: gli altri (v_search,
 % z_ext_max, z_nom, tol) sono comandi in posizione e geometria.
+% Accetta un 1x3 (una soglia per giunto) oppure uno scalare, che viene
+% espanso ai tre giunti.
 if exist('OVERRIDE_C2_SOGLIA','var') && ~isempty(OVERRIDE_C2_SOGLIA)
     cfg.c2.soglia_tau = OVERRIDE_C2_SOGLIA;
-    fprintf('  [override] cfg.c2.soglia_tau = %g N*m\n', cfg.c2.soglia_tau);
+    fprintf('  [override] cfg.c2.soglia_tau = %s N*m\n', mat2str(cfg.c2.soglia_tau, 4));
 end
 
 if cfg.c2.attiva
     c2_soglia = cfg.c2.soglia_tau;
 else
-    c2_soglia = inf;         % il flag di contatto non scatta mai
+    c2_soglia = inf(1,3);    % il flag di contatto non scatta mai
+end
+
+% [23/9] Nel modello la soglia entra in un Relational Operator contro un Mux
+% di TRE coppie (coxa, femore, tibia): deve essere 1x3 sempre. Uno scalare si
+% espande, qualunque altra dimensione e' un errore di chi ha scritto
+% l'override, e va fermato qui e non a meta' simulazione.
+if isscalar(c2_soglia), c2_soglia = repmat(c2_soglia, 1, 3); end
+c2_soglia = reshape(c2_soglia, 1, []);
+if numel(c2_soglia) ~= 3
+    error('init_gait:soglia', ['c2_soglia ha %d elementi, ne servono 3 ' ...
+        '(coxa, femore, tibia).'], numel(c2_soglia));
 end
 
 % ATTENZIONE, ED E' STATO UN ERRORE NOSTRO: c2_soglia = inf NON basta per
