@@ -32,7 +32,7 @@ t2_cfg    = phantomx_config();
 t2_mdl    = 'phantomx_sim_zero';
 t2_fatt   = t2_cfg.t2_fattori;
 t2_nCicli = 10;
-t2_c2     = false;          % false = C1, anello aperto. true = C2.
+t2_c2     = true;          % false = C1, anello aperto. true = C2.
 T2 = table();
 t2_runs  = cell(1, numel(t2_fatt));
 t2_etichette = cell(1, numel(t2_fatt));
@@ -146,11 +146,12 @@ end
 % alla velocita' sbagliata.
 figure; hold on; grid on
 for t2_j = 1:numel(t2_runs)
-    plot(t2_runs{t2_j}.t / t2_runs{t2_j}.t(end), t2_runs{t2_j}.v(:,1));
+    plot(t2_runs{t2_j}.t / t2_runs{t2_j}.t(end) * t2_nCicli, t2_runs{t2_j}.v(:,1));
 end
 legend(t2_etichette, 'Location','best');
-xlabel('frazione della run'); ylabel('v_x [m/s]')
+xlabel('cicli di andatura'); ylabel('v_x [m/s]')
 title(sprintf('T2 - curva di velocita'', %s su Simscape', t2_nome_ctrl(t2_c2)))
+salva_grafico(sprintf('T2_%s', t2_nome_ctrl(t2_c2)));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function s = t2_nome_ctrl(c2)

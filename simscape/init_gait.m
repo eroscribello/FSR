@@ -182,6 +182,17 @@ if exist('OVERRIDE_C2','var') && ~isempty(OVERRIDE_C2)
     fprintf('  [override] cfg.c2.attiva = %d\n', cfg.c2.attiva);
 end
 
+% [23/9] Soglia di rilevazione del contatto, per la spazzata di sensibilita':
+%     OVERRIDE_C2_SOGLIA = 0.3;   init_gait;   sim(...)
+% Vale lo stesso motivo di OVERRIDE_C2: cfg viene ricostruita a ogni sim
+% (init_gait e' l'InitFcn), quindi assegnare c2_soglia fuori da qui non serve.
+% E' l'UNICO parametro di C2 che dipende dalle inerzie: gli altri (v_search,
+% z_ext_max, z_nom, tol) sono comandi in posizione e geometria.
+if exist('OVERRIDE_C2_SOGLIA','var') && ~isempty(OVERRIDE_C2_SOGLIA)
+    cfg.c2.soglia_tau = OVERRIDE_C2_SOGLIA;
+    fprintf('  [override] cfg.c2.soglia_tau = %g N*m\n', cfg.c2.soglia_tau);
+end
+
 if cfg.c2.attiva
     c2_soglia = cfg.c2.soglia_tau;
 else

@@ -175,6 +175,7 @@ plot(t5_run.t, 1e3*(t5_run.pf(:,3:3:18) - t5_P.z_piano));
 yline(1e3*t5_soglia_su, 'k:');
 t5_ombra(t5_P);
 xlabel('t [s]'); ylabel('z piedi - piano [mm]');
+salva_grafico(sprintf('T5_%s', t5_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function P = t5_passaggio(r, soglia, v_app, cfg, t_regime)

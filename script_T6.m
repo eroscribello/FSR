@@ -123,6 +123,7 @@ plot(t6_run.t, 1e3*(t6_run.pf(:,3:3:18) - t6_P.z_piano));
 yline(1e3*t6_soglia_su, 'k:');
 t6_ombra(t6_P);
 xlabel('t [s]'); ylabel('z piedi - piano [mm]');
+salva_grafico(sprintf('T6_%s', t6_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function P = t6_passaggio(r, soglia, v_app, cfg, t_regime)

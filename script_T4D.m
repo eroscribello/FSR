@@ -58,6 +58,7 @@
 % USCITE
 %   results/T4D_<ctrl>.csv           riga di metriche + le colonne chiave
 %   results/T4D_<ctrl>_finestre.csv  una riga per finestra, tutte le metriche
+%   grafici/T4D_<ctrl>.fig          figura, testi e assi modificabili dopo (+ .png)
 %
 % COLONNE DI CONTATTO: come in T4-T6, a NaN se i sensori non chiudono sul peso.
 %
@@ -189,6 +190,7 @@ plot(t4d_run.t, sum(t4d_S.fermo,2));
 yline(3, 'k:');
 t4d_ombra(t4d_F);
 xlabel('t [s]'); ylabel('piedi fermi');
+salva_grafico(sprintf('T4D_%s', t4d_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function [F, S] = t4d_finestre(r, G, cfg, v_app, t_regime)

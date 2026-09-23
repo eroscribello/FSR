@@ -216,6 +216,7 @@ for t3_j = 1:numel(t3_runs)
 end
 legend(t3_etichette, 'Location','best');
 xlabel('x [m]'); ylabel('y [m]'); title('T3 - traiettoria del CoM nel piano')
+salva_grafico(sprintf('T3_%s', t3_nome_ctrl(t3_c2)));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function wz = t3_wz(r)

@@ -209,6 +209,7 @@ plot(t4_run.t, 1e3*(t4_run.pf(:,3:3:18) - t4_R.z_piano));
 yline(1e3*t4_soglia_su, 'k:');
 t4_ombra(t4_R);
 xlabel('t [s]'); ylabel('z piedi - piano [mm]');
+salva_grafico(sprintf('T4_%s_%gdeg', t4_ctrl, t4_gradi));   % grafici/<tag>.fig
 end
 
 %% ================= helper =================
