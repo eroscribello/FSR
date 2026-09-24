@@ -183,17 +183,78 @@ numero da scrivere in relazione, non un lavoro. Si passa direttamente a
 
 ---
 
-## 5. Un'aggiunta che vale la relazione: limiti di coppia nel QP
+## 5. [RITIRATO 24/9] I limiti di coppia non sono l'argomento che credevamo
 
-In T4, T4D, T5 e T6 C2 arriva a 13–18 volte il datasheet dell'AX-12A, e
-abbiamo scritto più volte *«è un argomento per l'MPC, che può mettere i limiti
-di coppia nel problema»*. Si può fare davvero: a `q` fissato, `τ = −Jᵀ Rᵀ f` è
-**lineare** in `f`, quindi `|τ| ≤ τ_max` è un vincolo lineare in più nel QP,
-ricalcolato a ogni passo con la `q` corrente.
+Questa sezione diceva: *«in T4, T4D, T5 e T6 C2 arriva a 13–18 volte il
+datasheet dell'AX-12A»*, e da lì faceva discendere che il vincolo `|τ| ≤ τ_max`
+nel QP fosse *«l'unico confronto in cui l'MPC può rivendicare qualcosa che i
+cinematici non possono fare»*.
 
-Proposta: **C3 base** senza il vincolo, e **C3τ** con il vincolo, dopo S3. È
-l'unico confronto in cui l'MPC può rivendicare qualcosa che i cinematici non
-possono fare per costruzione.
+**Quel numero è del 22/9, cioè PRIMA della correzione delle inerzie.** Riletti
+i CSV della campagna rifatta, non regge.
+
+### `tau_max` misurato, inerzie corrette (datasheet 1.5 N·m)
+
+| task | C1 | C2 | × datasheet (C2) |
+|---|---|---|---|
+| T2 v1.00x | 1.87 | 1.90 | 1.3× |
+| T2 v1.20x | 2.38 | 2.90 | 1.9× |
+| T2 v2.00x | 2.87 | 3.64 | 2.4× |
+| T2 v0.50x | 3.64 | 5.86 | 3.9× |
+| T2 v1.50x | **14.58** | 14.09 | 9.4× |
+| T4 rampa | 2.10 | 2.52 | 1.7× |
+| T4D dosso | 2.58 | 4.27 | 2.8× |
+| T5 ostacolo | 4.46 | 10.82 | 7.2× |
+| T6 ostacoli | 7.51 | 9.46 | 6.3× |
+
+Il massimo assoluto è ora 14.6 N·m, **su C1**, ed è un valore isolato fra
+vicini a 1.87 e 2.87: un picco da impatto, un campione. È esattamente il tipo
+di numero che il pavimento di rumore aveva già bocciato — `tau_max` non
+discrimina in **nessun** task (`piano_confronto.md`, 23/9). Usarlo come titolo
+avrebbe contraddetto un criterio che avevamo scritto noi.
+
+Sulle colonne che sopravvivono:
+
+| | C1 | C2 | vs datasheet |
+|---|---|---|---|
+| `tau_rms`, tutti i task | 0.38–0.55 | 0.37–0.50 | 25–37% |
+| `tau_rms_giunto_peggiore`, peggior caso | 1.11 | 1.01 | 74% |
+
+**In RMS, giunto peggiore compreso, il robot sta dentro il datasheet su ogni
+task.** Il vincolo di coppia nel QP risolverebbe un problema che non esiste.
+
+### Cosa cade con questa sezione
+
+| affermazione | stato |
+|---|---|
+| «C2 arriva a 13–18× il datasheet» | **ritirata**: pre-inerzie |
+| «C2 costa più coppia di C1» | **non sostenibile**: in RMS sono identici, e in T2 v1.50x C1 supera C2 |
+| «C3τ con i limiti di coppia è il confronto che vale» | **ritirata**: niente da vincolare |
+
+Resta valido solo il fatto tecnico: a `q` fissato `τ = −Jᵀ Rᵀ f` è lineare in
+`f`, quindi `|τ| ≤ τ_max` **sarebbe** un vincolo lineare facile da aggiungere.
+Se un giorno servisse, si sa come. Oggi non serve.
+
+### Dove si è spostato l'argomento
+
+Quello che un controllore in forza può fare e uno cinematico no, e che è
+misurabile con le colonne sopravvissute al pavimento di rumore:
+
+| capacità | perché il cinematico non può | colonna che lo misura |
+|---|---|---|
+| **ripartire il carico** fra le zampe | non conosce le forze; con sei piedi a terra e giunti in posizione nascono forze interne (misurate il 24/9: femore ×1.26, tibia ×2.36 rispetto al solo peso) | `cot`, `energia` |
+| **adattarsi al terreno senza soglia** | C2 ha bisogno di una ricerca esplicita con soglia tarata a mano e mai validata | `frazione_task`, `z_media` su T6 |
+| **incassare un disturbo** | nessun margine di forza da redistribuire | `frazione_task` (T7, mai eseguito) |
+| **reggere massa sottostimata del 10%** | non ha un modello da correggere | `cot`, `z_media` |
+
+La prima riga è la più promettente e nasce da una misura che abbiamo già in
+mano: le forze interne esistono, sono grandi, e un controllore che le
+minimizza dovrebbe pagarle meno in `cot`. È un'ipotesi, e va misurata.
+
+**Vincoli nel QP: `f_z ≥ 0` resta necessario** (una pseudo-inversa può chiedere
+a un piede di tirare il terreno). I coni d'attrito con `mu = 0.9` e pendenza 8°
+(`tan 8° = 0.14`) non sono vincolanti. Quindi il QP va introdotto quando si
+misura che `f_z < 0` accade, non prima.
 
 ---
 
