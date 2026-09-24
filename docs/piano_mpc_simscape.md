@@ -90,14 +90,77 @@ sale al gradino dopo finché quello sotto non passa.
 
 | gradino | cosa gira | criterio di passaggio | cosa verifica |
 |---|---|---|---|
-| **S0** | giunti in coppia, **niente MPC**: `τ = −Jᵀ Rᵀ f` con `f = m g / 6` verticale su tutte le zampe | corpo fermo: deriva di quota < 5 mm e assetto < 1° in 2 s | Jacobiano, segno, ordine delle zampe (CAN contro Mux) |
+| **S0** | ~~giunti in coppia, niente MPC~~ | ~~corpo fermo: deriva < 5 mm e assetto < 1° in 2 s~~ | **[RITIRATO 24/9]** criterio fisicamente irraggiungibile, vedi §3b. Quello che doveva verificare è verificato per altra via |
 | **S1** | MPC, **tutte le zampe in appoggio** (`gait = −1`), `v = 0` | tiene la posa; dopo una spinta sul corpo torna entro 1 s | stima dello stato, chiusura dell'anello, tempi di calcolo |
 | **S2** | tripode **sul posto** (`v = 0`), volo con PD di giunto | 10 s senza cadere, `ExitFlag` sempre 0, deriva < 5 cm | passaggio stance/swing, guadagni del PD in volo |
 | **S3** | tripode a `v_nom` su piano (T1) | stessa riga di metriche di C1; distanza entro il 20% di quella comandata | è C3 |
 | **S4** | campagna T2–T6 con gli script esistenti | — | il confronto |
 
-S0 è il gradino che conta di più: se il segno o lo Jacobiano sono sbagliati, da
-S1 in poi si vedrebbe solo «un robot che si comporta male» senza sapere perché.
+---
+
+## 3b. [RITIRATO 24/9] S0 non era un test sbagliato: era un test impossibile
+
+S0 chiedeva al robot di **restare fermo con coppie costanti in anello aperto**.
+Nessun vettore di coppie può farlo, nemmeno quello esatto.
+
+### Perché, in una riga
+
+A coppie di giunto fissate, la forza al piede è `f = −(Jᵀ)⁻¹ τ`, e `J` dipende
+dalla configurazione. Se il corpo **sale**, la zampa si distende, il braccio si
+accorcia e la stessa coppia dà **più** spinta: sale ancora. Se **scende**, la
+zampa si piega, il braccio si allunga e la stessa coppia dà **meno** spinta:
+scende ancora. È retroazione positiva in tutte e due le direzioni. Lo
+smorzamento (0.265 N·m·s/rad, la retta coppia-velocità dell'AX-12A) rallenta
+la divergenza ma non la inverte: combatte la velocità, non il segno del
+guadagno. È anche il motivo per cui l'MPC esiste.
+
+### Le prove, in ordine
+
+| # | prova | esito |
+|---|---|---|
+| 1 | `tau_statico`, coppie analitiche, a gradino | sale, muore a 0.17 s |
+| 2 | segno invertito | scende, muore a 0.07 s |
+| 3 | rampa 0.5 s | scende, muore a 0.20 s — **rampa ritirata**: la gravità resta piena, quindi durante la rampa il robot è sotto-coppia per costruzione |
+| 4 | smorzamento ai giunti | sale lo stesso, 0.16 s |
+| 5 | `tau_misurato`: coppie **lette dal modello base** che sta fermo davvero | sale lo stesso, 0.16 s |
+
+Cinque ingressi diversi, sempre `degenerate mass distribution` sul 6-DOF Joint.
+Quando l'errore non dipende dall'ingresso, non è l'ingresso.
+
+### Cosa è stato escluso, e come
+
+| ipotesi | strumento | esito |
+|---|---|---|
+| modello degenere di suo | `corpi_degeneri` | 0 corpi problematici |
+| cablaggio della copia diverso dal base | `controlla_copia` | 18/18 giunti identici |
+| massa degenere a prescindere dalle forze | `s0_vuoto` | 3 s puliti a gravità zero, **con le zampe che percorrono mezza corsa**: la massa non è degenere né in posa nominale né in un ampio intorno |
+| segno globale, mirroring, ordine dei giunti | `tau_misurato` | escluse tutte e tre: sei zampe con gli stessi numeri a 4 decimali |
+| ordine / segno / unità fra `Constant` e giunti | `prova_coppie` | rapporto arrivato/comandato **1.000 su tutti e 18**, scarto max 0.0000 N·m |
+| posa di partenza diversa nella copia | `posa_iniziale` | **identica al bit**: stessi angoli, stessi piedi (6/6 a terra, 2.788 N ciascuno), stessa quota 154.07 mm |
+
+L'ultima riga chiude il cerchio: base e copia partono dallo stesso stato con le
+stesse coppie, quindi a `t = 0` l'equilibrio è esatto. Quello che segue è
+divergenza da un equilibrio instabile, non un difetto.
+
+> **Errore mio, da non ripetere.** La prova 1 di `s0_vuoto` era stata dichiarata
+> "prova nulla": gravità zero, coppia zero, niente può muovere il robot. Falso.
+> Restava il **precarico del contatto** — `cfg.body_z0` parte 2.1 mm dentro il
+> pavimento — e le molle hanno spinto le zampe fino a richiuderle. Se ne è
+> accorto A. guardando l'animazione, non io leggendo i numeri.
+
+### Cosa resta di S0
+
+S0 doveva verificare tre cose. Tutte e tre sono verificate, meglio di come le
+avrebbe verificate S0:
+
+| cosa | verificato da | evidenza |
+|---|---|---|
+| ordine delle zampe (CAN contro Mux) | `prova_coppie` | 18 rapporti a 1.000 |
+| segno della mappa | `tau_misurato` | segni concordi su tutte e sei le zampe |
+| Jacobiano | `tau_misurato` | struttura confermata; i moduli differiscono (femore ×1.26, tibia ×2.36) perché con sei piedi a terra e giunti in posizione il sistema è **iperstatico** e la forza al piede non è verticale |
+
+**Il gradino S0 è ritirato. Si passa a S1.** La scala non salta un controllo:
+salta un controllo che era stato scritto male.
 
 ---
 
@@ -105,13 +168,18 @@ S1 in poi si vedrebbe solo «un robot che si comporta male» senza sapere perch�
 
 Già elencate in `piano_confronto.md` §9, qui in ordine di esecuzione.
 
-| # | cosa | perché | costo |
-|---|---|---|---|
-| 1 | `lb = −Fzd` → `lb = 0` | oggi il QP ammette piedi che **tirano** il terreno | 1 riga + verifica di ammissibilità |
-| 2 | `cfg.J` dall'URDF (`importrobot`) | è stimata, ed entra nella predizione | ½ ora |
-| 3 | disturbo spento e documentato | `fcn_get_disturbance` è ancora quello del quadrupede | già spento in `mpc_loop` |
-| 4 | `clear fcn_FSM` all'avvio di ogni simulazione | variabili `persistent`: senza azzerarle due run uguali danno risultati diversi | 1 riga in `init_gait` |
-| 5 | massa delle zampe | il modello SRB le considera senza massa: va misurata la quota di massa nelle zampe per sapere quanto errore di modello aspettarsi | ½ ora |
+| # | cosa | esito del 24/9 |
+|---|---|---|
+| 1 | ~~`lb = −Fzd` → `lb = 0`~~ | **RITIRATO: il codice è già corretto.** La variabile del QP è `U − Ut` e i vincoli sono scritti attorno a `Ud`: la riga `−lb + Ut − Ud` dà `U_z ≥ lb + Ud_z`, che con `lb = −Fzd = −Ud_z` vale `U_z ≥ 0`. Nessun piede può tirare il terreno. Cambiarlo in `lb = 0` imporrebbe `U_z ≥ Ud_z`, cioè il contrario di quello che serve |
+| 2 | `cfg.J` dall'URDF (`importrobot`) | **NON si può**, e non serve. Le inerzie dell'URDF sono quelle sbagliate di ~1000 volte (§9 di `piano_confronto`): `importrobot` restituirebbe proprio quelle. `calcola_J.m` la verifica invece componendo i valori corretti con gli assi paralleli: `cfg.J` sta dentro la forchetta fra i due casi limite e ~15% sotto il modello equispaziato. **Si tiene** |
+| 3 | disturbo spento e documentato | già spento in `mpc_loop` |
+| 4 | `clear fcn_FSM` all'avvio | **già fatto**: `mpc_loop.m` riga 57, con il commento che spiega perché |
+| 5 | massa delle zampe | **misurato: 38%** della massa totale (24 link da 24.4 g + 6 piedi, su 1.585 kg). Il modello SRB le considera **senza massa**: è l'errore di modello dominante dell'MPC, molto più grande del 15% su `J`. Va dichiarato in relazione |
+
+**[24/9] Il giorno 1 era quasi tutto già fatto o sbagliato.** Tre voci su cinque
+cadono, la quarta è la verifica di `J` (fatta, `calcola_J.m`), la quinta è un
+numero da scrivere in relazione, non un lavoro. Si passa direttamente a
+`crea_modello_mpc.m` e a S0.
 
 ---
 
@@ -144,13 +212,28 @@ lo stesso `.slx` non può servire tutti e tre.
 `applica_terreno` accetta già il nome del modello come terzo argomento, quindi
 i task funzionano sulla copia senza modifiche.
 
+### [24/9] Modifiche alla copia fatte FUORI da `crea_modello_mpc`
+
+L'opzione A vale solo se la copia resta rigenerabile. Ogni modifica fatta
+altrove va scritta qui e prima o poi riportata dentro `crea_modello_mpc`,
+altrimenti un `crea_modello_mpc('rigenera')` le cancella in silenzio.
+
+| # | modifica | dove è ora | perché | da riportare? |
+|---|---|---|---|---|
+| 1 | `PositionTargetPriority = 'Low'` sui 18 giunti | fatta a mano | con `'High'` i 18 target sovra-vincolano l'assemblaggio e il robot spariva al primo istante. `posa_iniziale` dimostra che con `'Low'` la copia parte comunque **identica al base**, quindi la priorità bassa non costa niente | **sì**, va messa in `crea_modello_mpc` passo 5 |
+| 2 | `Constant tau_S0` → `From Workspace` che legge `tau_ts` | `prova_S0.m`, una volta sola, con `save_system` sulla **sola copia** | serve un ingresso variabile nel tempo, non un numero | no: è un blocco di prova, sparisce quando entra il blocco C3 |
+| 3 | smorzamento `DampingCoefficient` ai giunti | `prova_S0.m`, **solo in memoria** | è la retta coppia-velocità dell'AX-12A (`τ_max/qd_max` = 0.265 N·m·s/rad), quindi è fisico e non un numero di comodo. Non sposta l'equilibrio statico: a velocità nulla dà coppia nulla | **da decidere**: se resta, va in `crea_modello_mpc`; se no, va tolto anche da `prova_S0` |
+
+Il modello del collega `phantomx_sim_zero.slx` non è mai stato aperto in
+scrittura: nessuno di questi script chiama `save_system` su di lui.
+
 ---
 
 ## 7. Calendario e punto di ripiego
 
 | giorno | lavoro | esce |
 |---|---|---|
-| 1 | punti 1–5 della §4; `crea_modello_mpc`; **S0** | robot fermo in coppia |
+| 1 | punti 1–5 della §4; `crea_modello_mpc`; ~~**S0**~~ | copia generata e verificata; **S0 ritirato** (§3b) |
 | 2 | blocco C3 nel modello; **S1** | MPC in anello chiuso |
 | 3 | volo con PD; **S2**, poi **S3** | C3 cammina |
 | 4 | campagna T2–T6 (gli script ci sono) | tabelle C3 |

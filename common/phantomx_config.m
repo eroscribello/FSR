@@ -104,7 +104,18 @@ cfg.m_link = 0.024357719;
 cfg.m_foot = 1000 * (4/3)*pi*cfg.contact.foot_r^3;
 cfg.mass   = cfg.m_body + 24*cfg.m_link + 6*cfg.m_foot;
 
-cfg.J       = diag([0.01444, 0.01751, 0.02889]);   % [TARATO] stimata, non misurata
+% [VERIFICATO 24/9] Inerzia del ROBOT INTERO visto come corpo rigido: la usa
+% solo il modello di predizione dell'MPC (p.J in get_params). Non e' cfg.I_body,
+% che e' del solo telaio: J comprende anche le zampe, che pesano il 38% del
+% totale e stanno fino a 20 cm dall'asse.
+% Verificata con calcola_J: composizione con gli assi paralleli dai valori
+% corretti dei link. Sta dentro la forchetta fra i due casi limite (masse
+% tutte all'anca / tutte al piede) e circa il 15% sotto il modello
+% equispaziato. Si tiene: 15% su J e' poco accanto all'errore di modello
+% dell'SRB, che le zampe le considera senza massa.
+% NON si puo' ricavare con importrobot: le inerzie dell'URDF sono quelle
+% sbagliate di ~1000 volte (vedi applica_inerzie).
+cfg.J       = diag([0.01444, 0.01751, 0.02889]);
 cfg.I_body  = [3.557e-03, 5.154e-03, 8.565e-03];
 cfg.I_c1    = [3.654e-06, 7.746e-06, 7.746e-06];
 cfg.I_c2    = [3.654e-06, 3.654e-06, 3.654e-06];
