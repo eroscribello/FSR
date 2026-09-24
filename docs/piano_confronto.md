@@ -129,77 +129,84 @@ clear OVERRIDE_C2                   % torna a cfg.c2.attiva
 > autorità, non l'anello aperto. Dettagli in
 > `docs/come_funziona_ricerca_terreno.md`.
 
-### [MISURATO] Su terreno piano C2 non serve, e si fa sentire
+### [MISURATO 23/9] Su terreno piano C2 non serve, e si fa sentire
 
-*Numeri del 21/9, forze dai sensori (vedi §9). La prima versione di questa
-sezione usava le forze ricostruite e ne traeva una conclusione sul contatto che
-con i sensori **non regge**: è corretta qui sotto.*
-
-T2 era classificato come **non discriminante** fra C1 e C2, con questa
-motivazione: su terreno piano la retroazione sul contatto non ha niente da
-trovare, quindi non interviene. **La prima metà è confermata, la seconda no.**
+*Riscritta il 23/9 con le inerzie corrette (§9) e filtrata con il pavimento di
+rumore misurato sullo stesso task. Rispetto alla versione del 21/9 cambiano
+tutti i valori assoluti di energia e coppia; la tesi resta. Sono state
+**ritirate** le affermazioni su `distacchi` e `potenza_max`, che non superano il
+rumore, e quella sui picchi di coppia di C2 (vedi sotto).*
 
 Avanzamento, a parità di cella (`frazione_task`):
 
 | | 0.50× | 1.00× | 1.20× | 1.50× | 2.00× |
 |---|---|---|---|---|---|
-| C1 | 0.847 | 1.163 | 1.119 | 0.826 | −0.482 |
-| C2 | 0.845 | 1.140 | 1.112 | **0.910** | −0.371 |
+| C1 | 0.894 | 1.122 | 1.087 | 0.844 | −0.453 |
+| C2 | 0.941 | 1.101 | 1.074 | 0.850 | −0.452 |
 
-Entro il 2% nelle prime tre celle: sull'avanzamento T2 non discrimina, come
-previsto. Ma C2 **interviene**, e si vede nel moto e nell'energia:
+A 2.00× entrambi falliscono per avanzamento insufficiente, come prima. La
+velocità satura fra 1.2× e 1.5× (0.157 → 0.153 m/s con C1): **1.20× resta
+l'ultima cella sana**.
 
-| C2 rispetto a C1 | 0.50× | 1.00× | 1.20× |
-|---|---|---|---|
-| `z_media` | +6.6 mm | +5.5 mm | +4.6 mm |
-| `cot` | 2.21 → **4.39** | 2.32 → 2.64 | 3.04 → 3.18 |
-| `distacchi` | 38 → **155** | 53 → 68 | 46 → 52 |
-| `potenza_max` | 29 → 195 W | 13 → 48 W | 23 → 57 W |
+**Il risultato, alla cella nominale 1.00×**, con il rapporto fra differenza e
+rumore accanto a ogni riga (criterio: ≥ 3 per poter concludere):
 
-**Il meccanismo si legge in `z_media`:** con C2 il corpo sta 5–7 mm più in alto
-a ogni velocità. La ricerca estende le zampe verso il basso, quindi il corpo si
-alza — su un terreno dove non c'è niente da cercare.
+| | C1 | C2 | diff. / rumore | |
+|---|---|---|---|---|
+| `cot` | 0.888 | 1.028 | **7.6** | +15.8% |
+| `energia` [J] | 18.6 | 21.1 | **7.6** | |
+| `z_media` [m] | 0.1521 | 0.1611 | **7.6** | corpo +9.0 mm |
+| `vel_media` [m/s] | 0.1349 | 0.1320 | **6.8** | C2 un 2% più lento |
+| `frazione_task` | 1.122 | 1.101 | **9.2** | |
+| `pitch_max` [rad] | 0.0090 | 0.0704 | **9.0** | |
+| `tau_max` [N·m] | 1.87 | 1.90 | 0.8 | non concludente |
+| `roll_max` [rad] | 0.0036 | 0.0186 | 1.7 | non concludente |
+| `dev_lat_max` [m] | 0.0043 | 0.0133 | 2.9 | non concludente |
+
+**Il meccanismo si legge in `z_media`:** con C2 il corpo sta **9 mm più in
+alto** su un terreno dove non c'è niente da cercare. La ricerca estende le
+zampe verso il basso a ogni appoggio, il corpo si alza, e quel movimento costa:
++15.8% di cost of transport per fare la stessa strada un 2% più piano.
 
 Perché si attiva: la ricerca parte quando `c(i) == 0` e il comando vuole la
-zampa a terra. All'istante del touchdown la forza è sotto la soglia per qualche
-decina di ms, quindi `c = 0` e la ricerca **parte a ogni appoggio**, estendendo
-di qualche mm. Nell'articolo la ricerca serve a una zampa che **non trova** il
-terreno, non al transitorio normale di contatto.
+zampa a terra. All'istante del touchdown lo scarto fra coppia attesa e misurata
+è sotto la soglia per qualche decina di ms, quindi `c = 0` e la ricerca **parte
+a ogni appoggio**. Nell'articolo serve a una zampa che **non trova** il terreno,
+non al transitorio normale di contatto. È un difetto di implementazione, non del
+metodo: la correzione naturale è un **ritardo di innesco** — non cercare finché
+non è passato un tempo minimo dal touchdown comandato. Da provare, non ancora
+provato.
 
-È un difetto di implementazione, non del metodo, e la correzione naturale è un
-**ritardo di innesco**: non cercare finché non è passato un tempo minimo dal
-touchdown comandato. Da provare, non ancora provato.
+Con le inerzie corrette la firma è più marcata di prima (+9 mm contro i +5.5
+misurati il 21/9): le coppie in volo sono più basse, il flag di contatto resta
+falso più a lungo, la ricerca scende di più.
 
-> **[CORRETTO] Il contatto non peggiora ovunque.** Con le forze ricostruite
-> questa sezione diceva che C2 peggiora la qualità del contatto a tutte le
-> velocità (`sotto3_frac` 0.004 → 0.169 a 1×). Con i sensori:
->
-> | `sotto3_frac` | 0.50× | 1.00× | 1.20× |
-> |---|---|---|---|
-> | C1 | 0.249 | 0.117 | 0.310 |
-> | C2 | **0.114** | 0.193 | **0.220** |
->
-> C2 è peggio solo a 1×, meglio a 0.5× e a 1.2×. L'affermazione sul contatto
-> era un artefatto della misura. Quelle su moto ed energia, sopra, non
-> dipendono dalla fonte delle forze e restano.
+**Alle velocità estreme il quadro si rovescia**, ma con cautela:
 
-**Vicino al bordo invece C2 aiuta.** A 1.50× l'avanzamento passa da 0.826 a
-0.910 e la potenza di picco si **dimezza**, da 285.7 a 139.3 W, con `cot` da
-7.48 a 6.51. Lì le zampe perdono davvero l'appoggio, quindi la ricerca ha
-qualcosa da trovare e il suo costo è ripagato. A 2.00× non basta più: il robot
-indietreggia meno (−0.371 contro −0.482) ma consuma quasi il doppio
-(`cot` 30.9 contro 18.0).
+| `cot` | 0.50× | 1.00× | 1.20× | 1.50× |
+|---|---|---|---|---|
+| C1 | 2.00 | 0.888 | 0.887 | 3.09 |
+| C2 | 2.60 | 1.028 | 0.879 | 2.83 |
 
-Da riportare così: **C2 sposta il costo, non lo elimina.** Paga in **energia e
-distacchi** dove il terreno è noto — fino al doppio del cost of transport a
-0.5× — e recupera dove il terreno sorprende. È il compromesso che un MPC con
-orizzonte non dovrebbe dover fare, ed è il confronto da impostare con C3.
+A 0.5× C2 costa il **30%** in più; a 1.2× i due sono indistinguibili (0.008 di
+differenza contro 0.018 di rumore); a 1.5× **C2 costa il 9% in meno**. Lì le
+zampe perdono davvero l'appoggio e la ricerca ha qualcosa da trovare. Il
+pavimento di rumore però è misurato **solo a 1.00×**: nelle celle a 1.5× e 2×
+compaiono picchi d'urto (`tau_max` ~14 N·m con entrambi) e la loro variabilità
+non è nota. Da riportare come indicazione, non come misura.
 
-Aperto: `pitch_rms` con C2 vale ~0.03 rad a tutte le velocità basse, quasi
-costante, contro 0.001 di C1. Un valore costante somiglia a un **offset** più
-che a un'oscillazione, e `pitch_rms` è l'RMS dell'angolo, quindi le due cose si
-confondono. `origine_beccheggio` le separa e non è ancora stato lanciato:
-finché non lo si fa, «C2 fa beccheggiare il robot di 2°» non è sostenuto.
+> **[RITIRATO 23/9] I picchi di coppia di C2.** Le versioni precedenti di
+> questa sezione riportavano `tau_max` di C2 a 10–11 N·m contro 1.5 di
+> datasheet. Con le inerzie corrette scende a 1.90 N·m contro 1.87 di C1 — e
+> soprattutto **`tau_max` non discrimina in nessun task**: il suo rumore (0.033
+> in piano) è più grande della differenza fra i controllori (0.027). Il massimo
+> di un segnale rumoroso è instabile per costruzione. Per parlare di coppie
+> serve `tau_rms`, e anche quello qui sta a 2.4, sotto la soglia di 3.
+
+**Da riportare così:** su terreno piano C2 non ha niente da cercare, cerca lo
+stesso, alza il corpo di 9 mm e paga il 16% di cost of transport. È il
+compromesso che un MPC con orizzonte non dovrebbe dover fare, ed è il confronto
+da impostare con C3.
 
 ### Il PD d'assetto
 
@@ -276,19 +283,21 @@ statico ridotto da 0,9 a 0,4.
 | | task | terreno | discrimina C1 / C2 ? | perché c'è |
 |---|---|---|---|---|
 | **T1** | piano, rettilineo, velocità nominale | liscio | **no** | riferimento di base |
-| **T2** | piano, rettilineo, **cinque velocità** | liscio | sull'avanzamento **no**, su energia e distacchi **sì** (§3) | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
-| **T3** | traiettoria curva, imbardata costante | liscio | poco: C2 +3 punti d'imbardata, stessi costi di T2 (§9) | C1 realizza il **15%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
-| **T4** | rampa di 8° in salita; **T4D**: dosso 14 cm, salita e discesa | liscio + rampa / dosso | salita a regime **no**, transizione **sì** (rollio −64%); discesa **sì, molto** — C1 lascia zampe appese, C2 no (§9) | nel paper la rampa è terreno noto e il corpo resta orizzontale (IK estesa, non implementata qui); da noi è ignota a entrambi |
-| **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | **sì, molto** — misurato: rollio −52%, deriva annullata (§9) | scenario del paper: terreno **ignoto** |
-| **T6** | terreno irregolare, ostacoli multipli | pavimento + 7 ostacoli | **sì** — misurato: beccheggio 45° → 16°, C1 oltre soglia (§9) | stress test, corrisponde alla loro fig. 19b |
+| **T2** | piano, rettilineo, **cinque velocità** | liscio | sull'avanzamento **no**, su energia e quota del corpo **sì** (§3) | curva prestazione–velocità: dove il cinematico cede e l'MPC no |
+| **T3** | traiettoria curva, imbardata costante | liscio | su energia e quota del corpo **sì**, come T2 (§9) | C1 realizza il **22%** dell'imbardata comandata (§9): caratterizza C3 contro il cinematico |
+| **T4** | rampa di 8° in salita; **T4D**: dosso 14 cm, salita e discesa | liscio + rampa / dosso | a regime **no**; su energia e quota del corpo **sì**; sui massimi d'assetto **non concludente** (§9) | nel paper la rampa è terreno noto e il corpo resta orizzontale (IK estesa, non implementata qui); da noi è ignota a entrambi |
+| **T5** | ostacolo singolo non modellato | liscio + 1 ostacolo | solo sulla **quota del corpo** (+19 mm); tutto il resto sotto il rumore (§9) | scenario del paper: terreno **ignoto** |
+| **T6** | terreno irregolare, ostacoli multipli | pavimento + 7 ostacoli | **sì**, ma a favore di C2 solo sull'energia: `cot` −32% (§9); i due non percorrono lo stesso tratto | stress test, corrisponde alla loro fig. 19b |
 | **T7** | disturbo impulsivo laterale | liscio | parziale | recupero dopo perturbazione |
 
 Su terreno piano la retroazione del paper **non dovrebbe** intervenire, e
 sull'avanzamento infatti C1 e C2 coincidono. Ma interviene lo stesso, a ogni
 touchdown, e costa energia (§3): T1–T3 servono soprattutto a caratterizzare C3
-contro il cinematico. Il
-confronto fra i due cinematici vive su **T4, T5 e T6** — che sono poi esattamente
-gli scenari sperimentali degli autori. Se il tempo obbligasse a tagliare, si
+contro il cinematico. Il confronto fra i due cinematici vive su **T4, T5 e T6** —
+che sono poi esattamente gli scenari sperimentali degli autori — ma **[23/9]**
+proprio lì i massimi d'assetto e le coppie di picco non superano il pavimento di
+rumore (§9): su terreno accidentato il confronto regge su quota del corpo ed
+energia, non sull'assetto. Se il tempo obbligasse a tagliare, si
 tagliano task piani, non quelli accidentati.
 
 ### T2: definizione canonica
@@ -428,6 +437,9 @@ in animazione è corretta. Cambiano le coppie registrate e la reazione del corpo
   scritto nelle sezioni T4–T6 sul «13–18 volte»;
 - il rapporto `cot` C2/C1 in T6 passa da **1.35 a 0.68**: con le inerzie
   corrette C2 consuma **meno** di C1, non di più.
+- **[23/9]** il discorso sui picchi di coppia è chiuso da un'altra parte:
+  `tau_max` non discrimina in **nessun** task, nemmeno in piano (sezione sul
+  pavimento di rumore, subito sotto). Va tolto dal confronto, non ricalcolato.
 
 Perché C2 è il più colpito: la ricerca del terreno muove la zampa verso il
 basso rapidamente, e con zampe mille volte più inerti quel movimento costa
@@ -445,32 +457,78 @@ ragiona sono coppie, energia, cot e assetto massimo.
 - `controllo_inerzie.m` verifica, prima di rifare le campagne, che le tarature
   fatte con le inerzie vecchie reggano: chiusura dei sensori sul peso, firme
   della ricerca di terreno di C2 (soglia `t_threshold`), run sane.
-- **[DECISO 23/9]** il collega è d'accordo a **rifare i test con le inerzie
-  corrette**. Resta aperto solo *dove* sta la correzione: `.slx` sistemato da
-  lui, oppure correzione a runtime con `applica_inerzie`. Le due strade danno
-  gli stessi numeri, quindi la campagna non aspetta questa decisione: si parte
-  con la correzione a runtime e, se il `.slx` verrà corretto, basta togliere
-  una riga dagli script (la chiamata è idempotente, non fa danni nemmeno se il
-  file è già a posto).
-- **Ordine di lavoro deciso** (uno per volta, non si salta):
-  1. `controllo_inerzie` — le tre verifiche. Se la **verifica 2** non passa, la
-     soglia di contatto di C2 (`t_threshold`) va ritarata *prima*: rifare le
-     campagne con una soglia che non scatta più significherebbe confrontare C1
-     con un C2 che non cerca il terreno.
-  2. campagne nell'ordine T2 → T3 → T4 → T4 limite → T4D → T5 → T6, C1 e C2.
-  3. riscrittura delle sezioni `[MISURATO]` che seguono e della tabella
-     riassuntiva.
-- **Dove è già attiva:** `script_T2`, `script_T3`, `script_T4` (e quindi
+- **[FATTO 23/9]** campagna rifatta per intero con le inerzie corrette: T2, T3,
+  T4, T4 limite, T4D, T5, T6, con C1 e C2. `controllo_inerzie` era passato su
+  tutte e tre le verifiche (sensori al 100.1% del peso, firme di C2 presenti,
+  run sane), e la riga `v1.00x` di `script_T2` coincide cifra per cifra con
+  quella di `controllo_inerzie`: la catena terreno → inerzie → metriche è
+  riproducibile.
+- **Dove è attiva:** `script_T2`, `script_T3`, `script_T4` (e quindi
   `script_T4_limite`), `script_T4D`, `script_T5`, `script_T6` chiamano
-  `applica_inerzie` subito dopo `applica_terreno`. **Da qui in poi ogni run di
-  campagna è con le inerzie corrette**: i CSV in `results/` vengono
-  sovrascritti, quindi i numeri vecchi vanno archiviati (git, oppure
-  `results/inerzie_URDF/`) prima di lanciare.
-- Finché le sezioni non sono riscritte, **i numeri di T2–T6 qui sotto sono
-  ancora quelli con le inerzie originali**.
+  `applica_inerzie` subito dopo `applica_terreno`. Se il collega correggerà il
+  `.slx`, la chiamata è idempotente e si toglie senza conseguenze.
+- I numeri della campagna con le inerzie dell'URDF sono conservati in
+  `results/storico/inerzie_URDF/`, per poter mostrare il confronto.
 
 
 Non sono voci di piano, sono debiti noti. Elencati perché non si perdano.
+
+### [MISURATO 23/9] Il pavimento di rumore: quali colonne discriminano
+
+Il simulatore è deterministico: rilanciare la stessa run dà gli stessi numeri
+alla quindicesima cifra. Questo rende impossibile stimare una variabilità
+ripetendo, e facile scambiare per risultato una differenza che non lo è.
+
+**Il metodo.** Si tiene fermo tutto e si cambia una cosa irrilevante: `gait.z0`
+di **±0.2 mm**, un quarto della penetrazione statica del contatto e un decimo di
+`cfg.c2.tol`. Le tre run che ne escono danno l'escursione che quella metrica ha
+**a parità di controllore e di condizioni**. Il criterio, scritto prima di
+lanciare:
+
+```
+rapporto = |valore C1 − valore C2| / escursione fra le perturbazioni
+rapporto >= 3  ->  la colonna discrimina
+rapporto <  3  ->  non si conclude nulla da quella colonna su quel task
+```
+
+`rumore_metriche.m`; risultati in `results/diagnostica/rumore_metriche.csv`
+(T4D, T5) e `rumore_T2.csv` (T2, C1 e C2).
+
+**L'esito, per famiglia di metriche:**
+
+| colonna | T2 (piano) | T4D (dosso) | T5 (ostacolo) |
+|---|---|---|---|
+| `cot`, `energia` | **7.6** | **3.7** | 2.5 |
+| `z_media` | **7.6** | **5.8** | **5.3** |
+| `vel_media`, `frazione_task` | **6.8 / 9.2** | 0.8 | 1.7 |
+| `pitch_max` | **9.0** | **3.3** | 0.8 |
+| `roll_max` | 1.7 | 2.4 | 0.5 |
+| `tau_max` | 0.8 | 0.5 | 2.1 |
+| `dev_lat_max` | 2.9 | 0.5 | 1.2 |
+| `yaw_err_fin` | 2.8 | 0.5 | 0.7 |
+
+**Tre letture, tutte da mettere in relazione:**
+
+1. **Le medie sull'intera run reggono, i massimi no.** `cot`, `energia` e
+   `z_media` discriminano ovunque siano state misurate; `tau_max` non discrimina
+   **in nessun task**, nemmeno in piano dove urti non ce ne sono: il massimo di
+   un segnale rumoroso è instabile per costruzione.
+2. **Su terreno irregolare cadono anche deriva e imbardata.** 0.2 mm decidono
+   quale piede tocca per primo uno spigolo; da lì in poi le traiettorie
+   divergono. Un robot vero si comporta allo stesso modo: è il motivo per cui
+   gli esperimenti si ripetono.
+3. **Quello che sopravvive ovunque è una cosa sola:** `z_media`, cioè la quota
+   del corpo. Ed è proprio la firma della ricerca del terreno di C2.
+
+**Conseguenza operativa.** Le colonne sotto 3 non compaiono nelle conclusioni
+dei rispettivi task — non sono cancellate dai CSV, sono dichiarate non
+discriminanti. Per recuperarle servirebbero 3–5 ripetizioni per cella con
+perturbazione, riportando mediana e intervallo: è la campagna per tre, e si fa
+solo se avanza tempo dopo C3.
+
+**Cosa resta da misurare:** il pavimento di rumore di T3, T4, T4-limite e T6.
+Per T3 e T4 si può ragionevolmente usare quello di T2 (terreno piano, andatura
+nominale); per T6, il più irregolare di tutti, no.
 
 ### Risultato chiuso: C1 scivola, e si vede nella velocità
 
@@ -565,96 +623,74 @@ piedi a terra»: veniva dalle forze ricostruite, ed è una delle ragioni per cui
 la perdita di appoggio era stata esclusa troppo presto. Con i sensori, a 2× i
 piedi a terra sono 2.33 e sotto tre il 54% del tempo.)
 
-### [MISURATO] T3 con C1: il 15% dell'imbardata comandata
+### [MISURATO 23/9] T3: il 22% dell'imbardata comandata
 
-Sessione pulita, forze dai sensori, `yaw_d = ±0.1 rad/s`, 15 s:
+*Riscritta il 23/9 con le inerzie corrette. Il rapporto d'imbardata di C1 passa
+dal 15% al **22%**: il numero va aggiornato ovunque compaia. La
+caratterizzazione con `diagnosi_imbardata` (sotto) è del 21/9 e **non** è stata
+rifatta: i suoi valori sono indicativi.*
 
-| | +0.1 | −0.1 |
-|---|---|---|
-| `yaw_mis` [rad/s] | +0.0147 | −0.0153 |
-| `yaw_rapporto` | 14.7% | 15.3% |
-| `roll_rms` / `pitch_rms` [rad] | 0.0043 / 0.0018 | 0.0044 / 0.0015 |
+Sessione pulita, forze dai sensori, `yaw_d = ±0.1 rad/s`, 15 s, una run per
+verso e per controllore.
 
-Asimmetria fra i due versi **3.9%**, corpo orizzontale, imbardata parassita a
-comando nullo 5·10⁻⁶ rad/s — il segnale è tremila volte sopra il rumore. Il
-raggio effettivo è v/ω ≈ 0.139/0.0147 ≈ **9.4 m** contro gli 1.2 comandati.
+| | C1 +0.1 | C1 −0.1 | C2 +0.1 | C2 −0.1 |
+|---|---|---|---|---|
+| `yaw_rapporto` | 21.9% | 21.8% | **31.9%** | **21.2%** |
+| `z_media` [m] | 0.1521 | 0.1521 | 0.1617 | 0.1645 |
+| `cot` | 0.970 | 0.972 | 1.179 | 1.165 |
+| `tau_max` [N·m] | 1.91 | 1.91 | 2.69 | 2.92 |
+| `dev_lat_max` [m] | 0.329 | 0.332 | 0.408 | 0.310 |
 
-Caratterizzazione da `diagnosi_imbardata`:
+**C1 è simmetrico allo 0.5%** (21.9 contro 21.8): impianto e andatura non hanno
+preferenze di verso, e il raggio effettivo è v/ω ≈ 0.134/0.0219 ≈ **6.1 m**
+contro gli 1.2 comandati.
 
-| caso | realizzato | lettura |
-|---|---|---|
-| arco 0.1 | 14.7% | la cella di campagna |
-| arco 0.4 | 23.8% | cresce col comando: c'è una componente a soglia |
-| destre specchiate | ≈ 0 | i due lati contribuiscono uguale: nessuna asimmetria destra/sinistra |
-| **sul posto** (caso esatto) | **56%** | senza approssimazioni sul passo |
+**Le firme di C2 ricompaiono con gli stessi valori di T2:** corpo +9.6 e
++12.4 mm (9.0 in T2), `cot` +21% (+16% in T2). Due task diversi, stesso
+meccanismo, stessa ampiezza: il difetto d'innesco della ricerca non è un caso
+di una campagna. Il pavimento di rumore è misurato su T2 e non su T3, ma i due
+task condividono terreno piano e andatura nominale: applicandolo, `cot` e
+`z_media` stanno a 8–11 volte il rumore.
 
-Due limiti diversi, da tenere separati in relazione:
+> **[APERTO 23/9] L'asimmetria di C2.** Con le inerzie corrette C2 realizza
+> 31.9% di imbardata in un verso e 21.2% nell'altro: **40% di differenza**,
+> mentre con le inerzie vecchie era simmetrico entro il 7%. Ipotesi, non
+> misura: C2 rileva il contatto zampa per zampa, e i due tripodi non sono
+> speculari rispetto all'asse di marcia (il baricentro del triangolo d'appoggio
+> è spostato di ±1.7 cm). Con inerzie mille volte più grandi quella differenza
+> veniva schiacciata. Il simulatore è deterministico, quindi ripetere la stessa
+> run non verifica nulla: servirebbe perturbare la fase iniziale e vedere se il
+> verso favorito resta lo stesso. Non fatto.
 
-- **56% sul posto** è il limite di aderenza del tripode comandato in posizione:
-  lo stesso scivolamento che in rettilineo lo fa andare *più* veloce del
-  comando (116%) qui gli toglie metà della rotazione. È del metodo.
-- **15–24% sull'arco** è molto sotto il 56% perché le sei zampe condividono una
-  sola lunghezza di passo, mentre in curva l'interna e l'esterna ne vorrebbero
-  due diverse, e si contrastano. È della **nostra implementazione** — due blocchi
-  di traiettoria invece di sei — e va dichiarato accanto al confronto con C3,
-  altrimenti si attribuisce all'MPC un vantaggio che è in parte nostro.
-
-`yaw_d` resta 0.1 per la campagna: il segnale è già ampiamente sopra il rumore,
-e alzare il comando porta il `delta` per zampa a 26°, dove l'approssimazione sul
-passo pesa di più.
+**Le due letture del limite d'imbardata** (caratterizzazione del 21/9, non
+rifatta): sul posto il tripode comandato in posizione realizza il 56% del
+comando — è il limite di aderenza del **metodo**; sull'arco scende al 15–24%
+perché le sei zampe condividono una sola lunghezza di passo mentre in curva
+l'interna e l'esterna ne vorrebbero due diverse. Questa seconda parte è della
+**nostra implementazione** — due blocchi di traiettoria invece di sei — e va
+dichiarata accanto al confronto con C3, altrimenti si attribuisce all'MPC un
+vantaggio che è in parte nostro.
 
 **Tre errori di metodo, tutti costati giorni, da non ripetere:**
 
 1. **Stato residuo della sessione.** Tutte le misure d'imbardata prima del 21/9
    sono da scartare: erano prese in una sessione MATLAB con stato residuo nel
    workspace, dove il robot in rettilineo aveva 0.455 piedi a terra e 4° di
-   beccheggio. In sessione pulita, stesso codice: 2.90 e 0.001. **Ogni campagna
-   parte da `clear all; bdclose all; startup_phantomx`.**
+   beccheggio. **Ogni campagna parte da `clear all; bdclose all;
+   startup_phantomx`.**
 2. **Il segno giudicato sul rumore.** Con quella misura `applica_imbardata` è
    stato portato a `segno = −1`, e ci è rimasto tre giorni. Invertire il segno
    non cambiava niente — e andava letto come «la misura non vale», non come «il
-   segno è giusto comunque». In sessione pulita −1 faceva girare il robot al
-   contrario; +1, il valore geometrico, è quello giusto.
+   segno è giusto comunque».
 3. **Il segno prima del modulo.** Il controllo in `script_T3` guardava `sign()`
    senza chiedere un modulo minimo, quindi scattava sul rumore. Ora il modulo
-   viene prima (soglia 5%, empirica: separa il 4.7% casuale del robot rotto dal
-   15% riproducibile di quello sano).
+   viene prima (soglia 5%).
+### [MISURATO 23/9] T4: in salita i due controllori si equivalgono
 
-**T3 con C2** — stessa sessione, stessa fonte delle forze:
-
-| | C1 +0.1 | C1 −0.1 | C2 +0.1 | C2 −0.1 |
-|---|---|---|---|---|
-| `yaw_rapporto` | 14.7% | 15.3% | **17.2%** | **18.3%** |
-| `z_media` [m] | 0.1520 | 0.1519 | 0.1575 | 0.1575 |
-| `pitch_rms` [rad] | 0.0018 | 0.0015 | 0.0349 | 0.0351 |
-| `cot` | 2.45 | 2.44 | 2.80 | 2.80 |
-| `tau_max` [N·m] | 1.67 | 1.62 | 11.4 | 11.4 |
-
-Asimmetria di C2 fra i due versi 6.8%, sotto il 15%. C2 realizza un po' più
-imbardata di C1: +2.5 e +3.0 punti, nello stesso senso in entrambi i versi. È
-coerente con una ricerca che tiene i piedi in contatto in curva, ma sono due
-run: va detto come «leggermente maggiore», non come un guadagno misurato.
-
-La cosa più solida è un'altra: **le firme di C2 misurate in T2 ricompaiono in
-T3 con gli stessi valori.** Corpo 5.6 mm più alto (5.5 in T2 a 1×), `cot`
-+14.5% (+14% in T2), `pitch_rms` ~0.035 rad (0.034 in T2). Due task diversi,
-stesso meccanismo, stessa ampiezza: il difetto d'innesco della ricerca non è un
-caso di una campagna.
-
-**Da dichiarare: i picchi di coppia di C2.** `tau_max` arriva a 11.4 N·m, in T3
-come in T2 (10.4 a 1×), contro gli 1.5 N·m del datasheet dell'AX-12A e 1.6–2.0
-di C1. `frazione_saturo` resta piccola (1.3% del tempo), quindi sono picchi
-brevi, ma sul robot vero un attuatore saturerebbe lì dove il simulatore, con
-attuatori ideali, non lo fa. È un vantaggio che il banco concede a C2 e va
-scritto.
-
-**T3 è chiuso**, su C1 e C2. Resta aperta per entrambi i task solo l'origine
-del `pitch_rms` di C2 (offset o oscillazione), che `origine_beccheggio` separa.
-
-### [MISURATO] T4: in salita i due controllori si equivalgono, C2 vince nella transizione
-
-> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
-
+*Riscritta il 23/9 con le inerzie corrette. **Ritirate** due affermazioni della
+versione precedente: la riduzione del 64% del rollio in transizione da parte di
+C2 (il rollio non supera il pavimento di rumore) e i 13.7 N·m di `tau_max` di
+C2 (`tau_max` non discrimina in nessun task). Il risultato a regime resta.*
 
 Rampa di 8° in salita, non nota al controllore, velocità nominale, 20 s.
 `script_T4`, una run per controllore. La rampa non finisce entro la run: si
@@ -663,290 +699,269 @@ più la **transizione** fra i due (finestre in testa a `script_T4.m`).
 
 | | C1 | C2 | |
 |---|---|---|---|
-| pendenza misurata dagli appoggi | 7.97° | 8.00° | verifica della posa: 8° |
-| inclinazione del corpo in piano | +0.10° | +2.04° | offset noto di C2 |
-| inclinazione del corpo in salita | 8.19° | 10.36° | |
-| errore rispetto alla rampa (tolto l'offset) | +0.12° | +0.32° | entrambi paralleli |
-| beccheggio picco-picco in salita | 0.48° | 0.17° | |
-| **escursione di rollio in transizione** | **4.13°** | **1.48°** | **−64%** |
-| escursione di rollio in salita | 0.45° | 0.24° | |
-| sobbalzo del corpo in transizione (dal grafico) | ~+28 mm | ~+14 mm | circa la metà |
-| distanza corpo–superficie, salita − piano | −0.5 mm | +0.7 mm | |
-| velocità in salita / in piano | 0.98 | 0.96 | |
-| `tau_max` | 2.7 N·m | **13.7 N·m** | |
-| `potenza_max` | 29 W | 83 W | |
-| `cot` | 2.84 | 3.27 | +15% |
+| pendenza misurata dagli appoggi | 8.00° | 7.97° | verifica della posa: 8° |
+| errore d'inclinazione rispetto alla rampa | **0.106°** | **0.032°** | entrambi paralleli |
+| inclinazione picco-picco in salita | 0.99° | **7.40°** | |
+| escursione di rollio in transizione | 2.16° | 1.33° | rumore non misurato |
+| distanza corpo–superficie, salita − piano | −0.9 mm | **+18.2 mm** | |
+| `z_media` [m] | 0.2553 | 0.2752 | corpo +20 mm |
+| velocità in salita / in piano | 0.903 | 0.901 | |
+| `cot` | 1.151 | 1.304 | +13% |
+| `tau_max` [N·m] | 2.10 | 2.52 | non concludente |
 
 **A regime la salita non discrimina.** Su una pendenza uniforme anche C1, in
-anello aperto, si allinea alla rampa entro 0.1°: il tripode in appoggio sta
+anello aperto, si allinea alla rampa entro 0.11°: il tripode in appoggio sta
 tutto sulla stessa superficie, e il corpo la segue perché la cinematica tiene
-costante la distanza piedi–corpo. Nessuno dei due tiene il corpo orizzontale,
-e non è un difetto: nessuno dei due conosce la pendenza. La tenuta orizzontale
-su terreno *noto* è la IK estesa del paper (§2, punto 1), che qui non è
-implementata.
+costante la distanza piedi–corpo. Nessuno dei due tiene il corpo orizzontale, e
+non è un difetto: nessuno dei due conosce la pendenza. La tenuta orizzontale su
+terreno *noto* è la IK estesa del paper (§2, punto 1), qui non implementata.
 
-**Discrimina la transizione**, cioè il tratto in cui il robot ha zampe in
-piano e zampe sulla rampa: C2 riduce il rollio del 64% e dimezza il sobbalzo del
-corpo. È lo stesso meccanismo di T5 (appoggi a quote diverse fra le zampe),
-più debole perché il gradino è progressivo.
+**C2 allinea meglio in media e peggio nel dettaglio.** L'errore medio è tre
+volte più piccolo di quello di C1 (0.032° contro 0.106°), ma l'inclinazione
+oscilla di **7.4°** picco-picco contro 0.99° — con le inerzie vecchie erano
+0.17°. È la stessa ricerca che in piano alza il corpo: qui lo alza di 18 mm
+sopra la rampa e lo fa ballare. Il rumore su queste due colonne non è misurato
+in T4 (lo è in T4D, dove `pitch_max` discrimina e `roll_max` no): l'oscillazione
+è un fattore 7 sopra quella di C1, quindi l'ordine di grandezza regge, il
+valore preciso no.
 
-**Il prezzo, come in T5 e T6.** `tau_max` di C2 è 13.7 N·m, 9 volte il
-datasheet dell'AX-12A. Anche C1 lo supera (2.7 N·m, 1.8 volte): è il primo
-task in cui succede, perché la salita carica le zampe anche senza ricerca del
-terreno.
+**Quello che regge senza riserve** è la firma già vista in T2 e T3: corpo più
+alto (+20 mm) e `cot` più alto (+13%). Quattro task, stesso meccanismo.
 
-**Un indizio sull'offset di C2.** Nel grafico l'inclinazione di C2 sale da 0°
-a 2° fra 0.5 e 1.5 s, in piano, e il corpo si alza di ~5 mm nello stesso
-tratto. L'offset si forma nei primi appoggi e poi resta: utile per
-`origine_beccheggio`.
+**Come si misura:** l'appoggio è cinematico come in T5; la quota del pavimento è
+il 10° percentile degli appoggi, non la mediana (in T4 la maggior parte degli
+appoggi è sulla rampa). I sensori chiudono al 17% del peso, perché vedono solo
+il pavimento e il robot passa quasi tutta la run sulla rampa: colonne di
+contatto a `NaN`.
 
-**Come si misura:** l'appoggio è cinematico come in T5; la quota del
-pavimento è il 10 percentile degli appoggi, non la mediana (in T4 la maggior
-parte degli appoggi è sulla rampa). I sensori chiudono al 19% (C1) e 16% (C2)
-del peso, perché vedono solo il pavimento e il robot passa quasi tutta la run
-sulla rampa: colonne di contatto a `NaN`.
-
-**Limiti:** una run per controllore. La discesa è misurata a parte, in T4D.
+**Limiti:** una run per controllore; pavimento di rumore non misurato su questo
+task. La discesa è misurata a parte, in T4D.
 
 **La posa della rampa.** `ispeziona_rampa` ha seguito la catena dal solido al
 mondo: tutti i Rigid Transform del terreno hanno il **solido sulla porta B e il
 mondo sulla F**, quindi l'offset scritto nel blocco è la posa del mondo vista
 dal solido, e il solido sta nella posa inversa. È la causa della regola dei
-«segni opposti» trovata a tentativi su pavimento e ostacoli. La posa del
-collega (`[-0.8 0 0.1]`, +Y 8°) era giusta: rampa davanti, in salita. È stata
-spostata di 0.3 m in avanti con lo stesso criterio di T5 (la salita inizia a
-0.66 m invece che a 0.36, dopo il transitorio). La metà posteriore del cubo
-resta sotto il pavimento: si vede nell'animazione, ma i piedi non ci arrivano.
+«segni opposti» trovata a tentativi su pavimento e ostacoli. La posa del collega
+era giusta: rampa davanti, in salita. È stata spostata di 0.3 m in avanti con lo
+stesso criterio di T5 (la salita inizia a 0.66 m invece che a 0.36, dopo il
+transitorio).
+### [MISURATO 23/9] T4: angolo limite di salita 20° per entrambi
 
-### [MISURATO] T4: angolo limite di salita ~20° per entrambi
-
-> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
-
+*Riscritta il 23/9 con le inerzie corrette. Il limite **non cambia**, ma i
+margini diventano netti: prima i due casi al bordo si decidevano per pochi
+millesimi, ora per decimi.*
 
 `script_T4_limite`: griglia 10–30° e bisezione, criterio di «salita riuscita»
 dichiarato in testa a `script_T4` prima della ricerca (tutte le zampe sulla
-rampa, due cicli a regime, velocità ≥ metà di quella in piano, assetto entro
-30° rispetto alla rampa). Una run per angolo.
+rampa, due cicli a regime, velocità ≥ metà di quella in piano, assetto entro 30°
+rispetto alla rampa). Una run per angolo.
 
-| gradi | C1 v salita/piano | C2 v salita/piano | C1 `tau_max` | C2 `tau_max` | C1 rollio transiz. | C2 rollio transiz. |
-|---|---|---|---|---|---|---|
-| 10 | 0.98 | 0.95 | 2.5 | 14.1 | 5.4° | 1.9° |
-| 15 | 0.94 | 0.89 | 3.4 | 17.0 | 5.4° | 3.0° |
-| 20 | **0.77** ✓ | **0.50** ✓ | 5.3 | 22.0 | 7.2° | 3.4° |
-| 21 | 0.50 ✗ | 0.01 ✗ | 4.1 | 21.1 | 7.3° | 4.2° |
-| 21.5 | 0.16 ✗ | zampa RL mai sulla rampa ✗ | 4.3 | 19.9 | | |
-| 22.5 | −0.01 ✗ | 0.02 ✗ | 4.2 | 22.2 | | |
-| 25 / 30 | < 0 ✗ | zampe posteriori mai sulla rampa ✗ | 4.3 | 20 / 42 | | |
+| gradi | C1 v salita/piano | C2 v salita/piano | esito |
+|---|---|---|---|
+| 10 | 0.874 | 0.816 | salgono |
+| 15 | 0.800 | 0.811 | salgono |
+| **20** | **0.654** ✓ | **0.576** ✓ | salgono |
+| **21** | **0.437** ✗ | **0.280** ✗ | falliscono |
+| 21.5 | zampa RR mai sulla rampa ✗ | zampa RR mai sulla rampa ✗ | |
+| 22.5 | −0.03 ✗ | zampa RR mai sulla rampa ✗ | |
+| 25 / 30 | zampe posteriori mai sulla rampa ✗ | idem ✗ | |
 
-**Limite del banco: 20° per entrambi**, fra 20 e 21. È una soglia netta, non
-una degradazione graduale: da 20 a 22.5° C1 passa da 0.77 a −0.01 (scivola
-indietro). I due casi al margine vanno dichiarati: C1 fallisce a 21° per
-0.005 sul criterio della velocità (0.495), C2 passa a 20° per 0.003 (0.503).
-Letto onestamente: **C1 ~21°, C2 ~20°, cioè lo stesso limite**.
+**Limite del banco: 20° per entrambi**, fra 20 e 21. Con le inerzie vecchie
+questa conclusione stava su margini risibili — C1 falliva a 21° per 0.005 sul
+criterio e C2 passava a 20° per 0.003; ora a 20° passano con 0.65 e 0.58 e a 21°
+crollano a 0.44 e 0.28. **È una soglia, non una coincidenza.**
 
 **La ricerca del terreno non sposta il limite.** Che sia uguale per i due
-controllori indica una causa comune a entrambi (aderenza, spazio di lavoro
-delle zampe o geometria del tripode), non il controllore. Non è verificata:
-`mu_plant = 0.9` darebbe un limite statico di ~42°, quindi non è la sola
-aderenza statica. Da non scrivere come causa senza una prova.
+controllori indica una causa comune — aderenza, spazio di lavoro delle zampe o
+geometria del tripode — non il controllore. Non è verificata: `mu_plant = 0.9`
+darebbe un limite statico di ~42°, quindi non è la sola aderenza statica. Da non
+scrivere come causa senza una prova.
 
-**Dove C2 è peggio: rallenta prima.** A 20° C2 sale a metà velocità, C1 al 77%.
-Sopra il limite C2 si pianta al piede della rampa (le zampe posteriori non ci
-arrivano), C1 arriva sulla rampa e scivola indietro.
+**Come falliscono, oltre il limite.** Con le inerzie vecchie il robot «si
+fermava»; adesso nella maggior parte dei casi la causa è *«non tutte le zampe
+sulla rampa (RR)»* — la posteriore destra resta indietro e il robot si mette di
+traverso. Cambia la descrizione del fallimento, non l'angolo.
 
-**Dove C2 resta meglio: la transizione.** Il rollio nel passaggio piano→rampa
-è metà di quello di C1 a ogni angolo, come a 8° (T4).
+**Il robot sale più lentamente a ogni angolo** rispetto alle inerzie vecchie
+(0.87 contro 0.98 già a 10°): l'inerzia di marcia mascherava lo scivolamento.
 
-**Il prezzo cresce con la pendenza**, per entrambi: C1 da 2.5 a 5.3 N·m,
-C2 da 14 a 22 N·m (42 a 30°); `cot` di C2 da 3.4 a 5.3 fra 10 e 20°.
+**Limite realistico.** Già a 10° il picco di coppia supera il datasheet
+dell'AX-12A (1.5 N·m) con entrambi. `tau_max` però non è una colonna
+discriminante — il suo rumore è dell'ordine del valore stesso — quindi la
+formulazione difendibile è: *sul robot vero con gli AX-12A queste rampe non si
+salgono con questa andatura*, senza attribuire un angolo preciso al limite
+realistico né una differenza fra i due controllori.
+### [MISURATO 23/9] T4D: sul dosso resta la firma, non il vantaggio
 
-**Limite realistico (`tau_max` ≤ 1.5 N·m del datasheet): sotto 10° per
-entrambi**, e già a 8° (T4) entrambi lo superavano. Sul robot vero con gli
-AX-12A nessuno dei due salirebbe queste rampe con questa andatura: il limite
-del banco va scritto come limite del modello con attuatori ideali.
-
-### [MISURATO] T4D: in discesa C1 lascia le zampe appese, C2 no
-
-> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
-
+*Riscritta il 23/9. La versione precedente titolava «in discesa C1 lascia le
+zampe appese, C2 no» ed è **ritirata**: con le inerzie corrette C1 non lascia
+più le zampe appese. Sono ritirate anche le righe su rollio, coppie di picco,
+deviazione e imbardata, che non superano il pavimento di rumore misurato su
+questo stesso task.*
 
 Dosso di 14 cm non noto ai controllori: salita di 8° (come T4), cima piana di
-0.6 m, discesa di 8°, poi di nuovo piano. Velocità nominale, run da 30 s
-tagliata al bordo del pavimento. `script_T4D`, una run per controllore.
-La geometria (`dosso_profilo`) è scritta da `applica_terreno('T4D')` come STL
-e caricata nel solido della rampa, senza toccare il `.slx`.
+0.6 m, discesa di 8°, poi di nuovo piano. Velocità nominale, run da 30 s tagliata
+al bordo del pavimento. `script_T4D`, una run per controllore. La geometria
+(`dosso_profilo`) è scritta da `applica_terreno('T4D')` come STL e caricata nel
+solido della rampa, senza toccare il `.slx`.
 
-Le finestre si ricavano dalla posizione dei piedi rispetto ai quattro spigoli,
-non dal comportamento del corpo. «Spigolo convesso» = il terreno si abbassa
-sotto i piedi anteriori (inizio cima, inizio discesa).
+**Quello che regge** (rapporto differenza/rumore ≥ 3, rumore misurato con
+`rumore_metriche` su questo task):
 
-| finestra | rollio C1 → C2 | errore d'inclinazione max C1 → C2 | piedi fermi C1 → C2 |
+| | C1 | C2 | diff. / rumore |
 |---|---|---|---|
-| piano (riferimento) | 0.4° → 0.3° | 0.2° → 0.1° | 2.28 → 1.79 |
-| salita | 1.2° → 0.6° | 0.5° → 0.7° | 2.31 → 1.95 |
-| **inizio cima** | **5.9° → 0.9°** | 2.5° → 1.8° | **0.80 → 1.71** |
-| **inizio discesa** | **4.8° → 0.9°** | 2.5° → 1.3° | **0.90 → 1.79** |
-| **discesa** | **3.3° → 0.5°** | **3.5° → 1.0°** | 1.64 → 2.02 |
-| fondo discesa | 4.5° → 1.4° | 0.9° → 1.8° | 1.96 → 1.91 |
+| `z_media` [m] | 0.2128 | 0.2286 | **5.8** — corpo +16 mm |
+| `cot` | 1.117 | 1.329 | **3.7** — +19% |
+| `pitch_max` [rad] | 0.151 | 0.215 | **3.3** |
 
-| globali (run tagliata al bordo) | C1 | C2 | |
+**Quello che non regge**, con il rumore accanto:
+
+| | C1 | C2 | diff. / rumore |
 |---|---|---|---|
-| `tau_max` | 3.1 N·m | **19.6 N·m** | 13 volte il datasheet |
-| `potenza_max` | 36 W | 105 W | |
-| `cot` | 2.95 | 3.16 | +7% |
-| beccheggio massimo | 11.4° | 10.7° | |
-| rollio massimo | 5.9° | 1.5° | |
-| velocità media | 0.128 m/s | 0.135 m/s | |
+| `roll_max` | 0.037 | 0.070 | 2.4 |
+| `tau_max` [N·m] | 2.58 | 4.27 | 0.5 |
+| `dev_lat_max` [m] | 0.023 | 0.104 | 0.5 |
+| `yaw_err_fin` [rad] | 0.005 | −0.129 | 0.5 |
 
-**Il risultato più netto di T4.** Sugli spigoli convessi C1 perde due terzi
-dei piedi fermi rispetto al suo piano (2.28 → 0.8): le zampe anteriori vanno
-alla quota prevista, il terreno non c'è, e restano appese (visibile nel
-grafico come piedi 5–20 mm sopra il terreno per tratti lunghi). C2 ne perde il
-5%. È esattamente il fallimento che la retroazione del paper esiste per
-evitare (§2, «la zampa resta appesa perché il terreno è più basso del
-previsto»), ed è qui che la si vede lavorare.
+Sul dosso una perturbazione di 0.2 mm sulla quota comandata del piede cambia
+`tau_max` di 3.5 N·m e la deriva di 16 cm: decide quale piede tocca per primo lo
+spigolo, e con l'ordine degli urti cambiano tutti i massimi. Non è un difetto del
+simulatore — un robot vero fa lo stesso — ma significa che **su terreno
+irregolare i massimi di una singola run non sono un dato**.
 
-**Salita e discesa non sono simmetriche per C1.** In salita (T4) si allinea
-alla rampa; in discesa il rollio è quasi il triplo e l'inclinazione va oltre
-l'attesa (−11° contro −8°). Per C2 la differenza è piccola.
+> **[RITIRATO 23/9] Le zampe appese di C1.** Con le inerzie vecchie C1 perdeva
+> due terzi dei piedi fermi sullo spigolo convesso (2.28 → 0.80) mentre C2
+> restava a 1.71, ed era il risultato più forte di tutta la campagna. Con le
+> inerzie corrette C1 sta a **2.01** e C2 a **1.76**: il fallimento che la
+> retroazione del paper esiste per evitare **non si verifica più**, perché
+> nasceva dal corpo mille volte più difficile da ruotare che beccheggiava sullo
+> spigolo sollevando le zampe. Il confronto C1–C2 su questa colonna resta senza
+> stima di rumore (le colonne di finestra non sono nel test): non si conclude.
 
-**Cosa C2 non corregge.** Sugli spigoli convessi il corpo scende di ~11 mm con
-entrambi (`h_min`): C2 rimette a terra le zampe, ma non tiene la quota del
-corpo nel passaggio.
+**Cosa resta di T4D**, ed è la stessa cosa di T2, T3 e T4: C2 tiene il corpo più
+alto (+16 mm) e paga in cost of transport (+19%). Il beccheggio maggiore di C2
+(rapporto 3.3) è l'unica differenza d'assetto che sopravvive, ed è **a sfavore**
+di C2.
 
-**Come leggere i piedi fermi.** Anche in piano non sono 3: al cambio di tripode
-per un istante nessun piede è fermo. E C2 ne ha meno in piano (1.79) perché la
-ricerca del terreno muove il piede a ogni appoggio (§3). Il confronto è sulla
+**Come si leggono i piedi fermi.** Anche in piano non sono 3: al cambio di
+tripode per un istante nessun piede è fermo. Il confronto sarebbe sulla
 variazione rispetto al proprio piano, non sul valore assoluto.
 
-**Il prezzo, come in T4–T6.** `tau_max` di C2 19.6 N·m, 13 volte il datasheet.
-Verificato che non viene dalla caduta al bordo: con la run tagliata resta.
-
-**Limiti.** Una run per controllore. Deviazione e imbardata finali **non** sono
-un risultato: con il dosso da 12 cm C1 era uscito girato di 11° e spostato di
-28 cm, con quello da 14 cm dritto (−0.1°, 4.5 cm). Rollio, errore
-d'inclinazione e piedi fermi sono invece coerenti fra le due run.
-
 **Il bordo del pavimento.** Il pavimento è il cubo 8 × 8 (x fino a 4 m), e C2,
-più veloce, ci arrivava negli ultimi 2 s e cadeva (corpo −95 mm, beccheggio
-−18°). La prima versione tagliava solo le finestre; ora la run intera è
-troncata al primo piede oltre x = 3.95 m prima di `metriche` (colonna
-`t_bordo`). `cfg.floor_dim = [4 4 0.05]` non descrive la mesh del pavimento:
-da correggere o da commentare.
+più veloce, ci arrivava negli ultimi 2 s e cadeva. La run intera è troncata al
+primo piede oltre x = 3.95 m **prima** di `metriche` (colonna `t_bordo`).
+`cfg.floor_dim = [4 4 0.05]` non descrive la mesh del pavimento: da correggere o
+da commentare.
+### [MISURATO 23/9] T5: sull'ostacolo resta solo la quota del corpo
 
-### [MISURATO] T5: sull'ostacolo C2 dimezza il rollio e annulla la deriva
+*Riscritta il 23/9. La versione precedente titolava «C2 dimezza il rollio e
+annulla la deriva» ed è **interamente ritirata**: con le inerzie corrette i
+ruoli si invertono, e il pavimento di rumore misurato su questo task mostra che
+nessuna di quelle colonne è in grado di distinguere i due controllori.*
 
-> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
-
-
-Ostacolo 1, ~30 mm, spostato 0.5 m in avanti rispetto al `.slx` (vedi sotto),
+Ostacolo 1, ~33 mm, spostato 0.5 m in avanti rispetto al `.slx` (vedi sotto),
 velocità nominale, 20 s. `script_T5`, una run per controllore.
 
-| | C1 | C2 | |
+**Quello che regge:**
+
+| | C1 | C2 | diff. / rumore |
 |---|---|---|---|
-| escursione di rollio | 8.2° | **3.9°** | −52% |
-| escursione di beccheggio | 8.6° | **6.9°** | −20% |
-| corpo in z sull'ostacolo (pp) | 60 mm | **34 mm** | −44% |
-| deviazione laterale massima | 0.25 m | **0.009 m** | |
-| imbardata finale | −9.8° | **−0.03°** | |
-| tempo sull'ostacolo | 11.2 s | 7.7 s | |
-| frazione del task | 104% | 111% | |
-| `tau_max` | 6.7 N·m | **20.0 N·m** | |
-| `potenza_max` | 50 W | 166 W | |
-| `cot` | 2.97 | 3.31 | +11% |
+| `z_media` [m] | 0.1536 | 0.1722 | **5.3** — corpo +19 mm |
 
-È il primo task in cui la ricerca del terreno fa quello per cui esiste. C1
-esce dall'ostacolo girato di 10° e spostato di 25 cm di lato, e oscilla per
-altri cinque secondi; C2 esce dritto e torna subito all'assetto di prima.
+**Quello che non regge:**
 
-**Il prezzo va scritto accanto al guadagno.** `tau_max` di C2 arriva a
-20 N·m, **13 volte** il datasheet dell'AX-12A (1.5 N·m). Il banco ha attuatori
-ideali e lo concede; un robot vero saturerebbe proprio dove C2 si guadagna il
-vantaggio. Formulazione per la relazione: *C2 dimezza il rollio e annulla la
-deriva sull'ostacolo; su attuatori reali il vantaggio è da verificare.* È anche
-un argomento per l'MPC, che può mettere i limiti di coppia nel problema.
+| | C1 | C2 | diff. / rumore |
+|---|---|---|---|
+| `cot` | 1.198 | 1.672 | 2.5 |
+| `tau_max` [N·m] | 4.46 | 10.82 | 2.1 |
+| `dev_lat_max` [m] | 0.018 | 0.135 | 1.2 |
+| `pitch_max` [rad] | 0.132 | 0.164 | 0.8 |
+| `roll_max` [rad] | 0.078 | 0.088 | 0.5 |
 
-**Come si misura** (dettagli in testa a `script_T5.m`):
+Il `cot` a 2.5 e le coppie a 2.1 sono **vicini** alla soglia di 3: con tre
+ripetizioni per cella diventerebbero probabilmente conclusivi. Con una sola run
+no.
 
-- il passaggio si riconosce da un piede **fermo nel mondo** e più alto del
-  pavimento di 15 mm, non dai sensori di forza — che vedono solo il pavimento
-  (chiudono al 79–83% del peso in T5), quindi le colonne di contatto sono a
-  `NaN`;
-- l'assetto è un'**escursione** rispetto alla media in piano, presa fuori dalla
-  finestra: così l'offset di −2° di C2 non lo penalizza né lo favorisce.
+> **[RITIRATO 23/9] Il vantaggio di C2 sull'ostacolo.** Con le inerzie vecchie
+> C1 usciva dall'ostacolo girato di 10° e spostato di 25 cm mentre C2 usciva
+> dritto, ed era il caso in cui «la ricerca del terreno fa quello per cui
+> esiste». Con le inerzie corrette i numeri si scambiano quasi esattamente — C1
+> 1.8 cm di deriva, C2 13.5 cm — ma **entrambe le versioni sono dentro il
+> rumore**: 0.2 mm sulla quota comandata del piede spostano la deriva di 9 cm.
+> Non è che avevamo il segno sbagliato: non avevamo una misura.
 
-**Limiti:** una run per controllore, quindi nessuna stima di variabilità; e le
-finestre non coincidono (C2 riconosciuto sull'ostacolo a 0.61 m, C1 a 0.74 m).
-Le escursioni sono massimi, e la finestra di C1 è più lunga per le oscillazioni
-dopo la discesa, che sono comportamento suo: il confronto non sfavorisce C2.
+> **[RITIRATO 23/9] I 20 N·m di C2.** La versione precedente li dichiarava «13
+> volte il datasheet» e ne faceva un argomento per l'MPC. Con le inerzie
+> corrette sono 10.8, e `tau_max` non discrimina qui (2.1) né altrove.
+> L'argomento per i limiti di coppia nel QP dell'MPC resta valido in linea di
+> principio, ma **non è sostenuto da questa misura**.
+
+**Come si misura** (dettagli in testa a `script_T5.m`): il passaggio si riconosce
+da un piede **fermo nel mondo** e più alto del pavimento di 15 mm, non dai
+sensori di forza — che vedono solo il pavimento (chiudono all'80% del peso in
+T5), quindi le colonne di contatto sono a `NaN`. L'assetto è un'**escursione**
+rispetto alla media in piano, presa fuori dalla finestra.
+
+**Limiti:** una run per controllore; le finestre non coincidono (C1 e C2
+riconosciuti sull'ostacolo a quote di tempo diverse).
 
 **Lo spostamento dell'ostacolo.** Nel `.slx` l'ostacolo 1 stava a 16 cm dalla
 partenza: il robot ci arrivava a 1.2 s, prima della fine del transitorio.
-`cfg.terreno.ost_dx.T5 = [-0.5 0 ...]` lo sposta di 0.5 m in avanti a runtime,
-senza toccare il modello; ora il robot ci arriva a ~5 s. Il segno è negativo
-perché i Rigid Transform degli ostacoli hanno x e z opposte al mondo — misurato:
-con +0.5 l'ostacolo si avvicinava. [CORRETTO] Avevo attribuito la cosa a una
-catena del pavimento ruotata di 180°: la causa vera è il solido montato sulla
-porta B (vedi T4). Le escursioni di C1 non cambiano con la posizione (8.0°/8.7° prima,
-8.2°/8.6° dopo).
+`cfg.terreno.ost_dx.T5` lo sposta di 0.5 m in avanti a runtime, senza toccare il
+modello. Il segno è negativo perché i Rigid Transform degli ostacoli hanno x e z
+opposte al mondo: la causa è il solido montato sulla porta B (vedi T4).
 
-**Un difetto trovato per strada.** La riscrittura di `applica_terreno` cercava
-i Rigid Transform per nome (`Rigid Transform_Ostacolo1`), ma nel modello si
-chiamano `Rigid⏎Transform10` — con un a capo dentro il nome. `set_param`
-falliva e un `catch` vuoto lo nascondeva: le sezioni sulla posa degli ostacoli
-non hanno mai applicato niente. Ora il blocco si trova seguendo il collegamento
-del solido, e ogni fallimento viene segnalato anche senza `verbose`. La
-rampa aveva lo stesso difetto, ma la sua posa in `cfg` coincideva con quella
-salvata nel `.slx`: ora è agganciata allo stesso modo (vedi T4).
+**Un difetto trovato per strada.** La riscrittura di `applica_terreno` cercava i
+Rigid Transform per nome (`Rigid Transform_Ostacolo1`), ma nel modello si
+chiamano `Rigid⏎Transform10` — con un a capo dentro il nome. `set_param` falliva
+e un `catch` vuoto lo nascondeva. Ora il blocco si trova seguendo il
+collegamento del solido, e ogni fallimento viene segnalato anche senza
+`verbose`.
+### [MISURATO 23/9] T6: C1 non si ribalta più, e i due non fanno lo stesso percorso
 
-### [MISURATO] T6: C1 supera la soglia di assetto, C2 no
+*Riscritta il 23/9 con le inerzie corrette. La versione precedente titolava «C1
+supera la soglia d'assetto, C2 no» ed è **ritirata**: era l'effetto più vistoso
+delle inerzie sbagliate. Il pavimento di rumore **non** è misurato su questo
+task: le differenze qui sotto sono molto più grandi di quelle di T4D e T5, ma
+restano da confermare.*
 
-> **[22/9] Da rifare con le inerzie corrette** (vedi la sezione sulle inerzie in §9): con le inerzie del modello i valori di coppia, energia e assetto qui sotto cambiano, in T6 anche nelle conclusioni.
-
-
-Pavimento + sette ostacoli, disposizione del modello (nessuno spostamento),
-velocità nominale, 30 s. `script_T6`, cioè `script_T5` con lo stesso metodo;
-una run per controllore.
+Pavimento + sette ostacoli, disposizione del modello, velocità nominale, 30 s.
+`script_T6`, una run per controllore.
 
 | | C1 | C2 | |
 |---|---|---|---|
-| escursione di beccheggio | **45.1°** | **16.0°** | −65% |
-| escursione di rollio | 30.9° | 8.3° | −73% |
-| corpo in z sugli ostacoli (pp) | 185 mm | 119 mm | |
-| deviazione laterale massima | 0.52 m | 0.19 m | |
-| imbardata finale | +18.7° | −4.5° | |
-| distanza in 30 s | 3.21 m | 3.68 m | |
-| frazione del task | 88% | 102% | |
-| appoggi sugli ostacoli | 34 | 66 | |
-| esito | `ribaltamento` | superato | |
-| `tau_max` | 7.0 N·m | **26.5 N·m** | |
-| `potenza_max` | 66 W | 387 W | |
-| `cot` | 3.93 | 5.30 | +35% |
+| beccheggio massimo | **14.7°** | **22.6°** | prima: 45.1° e 14.4° |
+| rollio massimo | 7.0° | 9.4° | prima: 30.9° e 8.1° |
+| esito | superato | superato | prima C1: `ribaltamento` |
+| distanza in 30 s | 2.45 m | 3.44 m | |
+| `frazione_task` | 0.68 | 0.94 | |
+| imbardata finale | **−57°** | +19° | |
+| altezza media degli ostacoli incontrati | 4.3 cm | 6.2 cm | |
+| `energia` [J] | 108.8 | 104.5 | |
+| `cot` | 2.855 | **1.954** | **−32%** |
 
-**«Ribaltamento» per C1 è la soglia, non una caduta.** `metriche` lo dichiara
-quando rollio o beccheggio superano i 30° anche per un istante; C1 arriva a
-45° di beccheggio scendendo dalla «scala» e in simulazione si riprende. La
-soglia è stata dichiarata prima delle misure e resta: 45° su un robot vero con
-gli AX-12A è quasi certamente una caduta. Da scrivere così: *C1 supera la
-soglia di assetto di 30° e in simulazione si riprende.*
+**C1 non supera più la soglia dei 30°.** Con le inerzie dell'URDF arrivava a 45°
+di beccheggio e `metriche` dichiarava `ribaltamento`; con quelle corrette sta a
+14.7°. Era il risultato più forte a favore di C2 in tutta la campagna, ed era un
+artefatto del modello.
 
-**C1 attraversa meno terreno.** Scendendo dalla scala C1 ruota e sull'ultimo
-ostacolo (un gradino a sinistra, due a destra) passa solo su quello di
-sinistra — osservato in animazione. C2 fa 66 appoggi sugli ostacoli contro 34,
-e finisce il campo quasi dritto. Quindi su T6 l'assetto va letto **insieme** a
-deviazione e imbardata: C2 ha escursioni molto minori pur affrontando più
-terreno, e questo rafforza il risultato invece di indebolirlo.
+> **[LIMITE 23/9] I due non fanno lo stesso task.** C1 percorre 2.45 m contro i
+> 3.44 di C2 e finisce ruotato di 57°: incontra ostacoli diversi e mediamente
+> più bassi (4.3 contro 6.2 cm). Confrontare i massimi d'assetto fra due
+> percorsi diversi non è un confronto fra controllori. Va detto in relazione,
+> non nascosto.
 
-**Il prezzo cresce col terreno.** `tau_max` di C2 è 26.5 N·m, **18 volte** il
-datasheet dell'AX-12A (in T5 era 13 volte, 20 N·m); il cost of transport sale
-del 35%. Come in T5: il banco ha attuatori ideali, un robot vero saturerebbe
-proprio dove C2 si guadagna il vantaggio.
+**L'unico task in cui C2 conviene.** Il cost of transport di C2 è **il 32% più
+basso** di quello di C1 — in tutti gli altri task è dal 13 al 21% più alto. Su
+terreno molto irregolare la ricerca del terreno serve davvero: C2 avanza di un
+metro in più consumando meno energia in assoluto. È l'unico punto della campagna
+in cui il controllore del paper ripaga il suo costo, ed è coerente con la sua
+ragione d'essere.
 
-**Limiti.** Una run per controllore. I sensori di forza chiudono al 63% (C1) e
-al 48% (C2) del peso — C2 passa più tempo sugli ostacoli, che i sensori non
-vedono — quindi le colonne di contatto sono a `NaN`. Il controllo a occhio
-sugli ostacoli 4–7 (posati sui rilievi del vecchio pavimento imperfetto) non
-ha mostrato ostacoli sospesi.
+**Limiti.** Una run per controllore; pavimento di rumore non misurato (sei run,
+~20 minuti, se si vuole chiudere anche questo). I sensori di forza chiudono al
+44% (C1) e 55% (C2) del peso — passano molto tempo sugli ostacoli, che i sensori
+non vedono — quindi le colonne di contatto sono a `NaN`.
 
 ### Come sono ottenute le forze di contatto
 
