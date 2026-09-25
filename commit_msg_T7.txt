@@ -1,0 +1,84 @@
+T7: ne' C1 ne' C2 recupera dopo una spinta laterale
+
+Scenario nuovo: impulso laterale sul corpo durante la marcia, spazzata di
+ampiezza, e si cerca la soglia a cui ciascun controllore smette di
+recuperare. Non si cerca l'ampiezza che li fa cadere: quella si trova
+sempre alzandola, ed e' un esperimento tarato sulla conclusione.
+
+RISULTATO
+  A tutte le ampiezze leggibili (dv = 4, 8, 16 volte v_nom) ne' C1 ne' C2
+  recupera una frazione misurabile dello spostamento. Il robot viene
+  traslato - 11, 78, 394 mm - e riprende a camminare da li': distanza e
+  vel_media restano invariate in ogni riga.
+  E' la previsione strutturale: nessuno dei due ha retroazione sullo stato
+  del corpo, quindi non ha l'informazione per tornare.
+  E' l'affermazione su cui costruire un controllore in forza, ed e' un
+  bersaglio onesto: basta una retroazione sulla posizione laterale.
+
+  Quantita' recuperata contro la soglia di leggibilita':
+    C1 (pavimento 0.91 mm, soglia 2.73):  0.30 / 0.58 / 0.49 mm
+    C2 (pavimento 1.56 mm, soglia 4.66):  3.25 / 1.81 / 1.00 mm
+  Nessuna supera la propria soglia.
+
+NON MISURABILE SU QUESTO IMPIANTO
+  La soglia di CADUTA. A dv = 16 la spinta vale 61 N per 50 ms su un robot
+  da 15.3 N - quattro volte il suo peso - e il robot scivola di 39 cm e
+  continua a camminare. In ComputedTorque le zampe hanno coppia illimitata:
+  e' un tavolo rigido che viene spinto e non puo' cedere.
+  Per misurarla servono gli attuatori saturati al datasheet, cioe'
+  l'impianto in coppia. Rimandato: quell'infrastruttura e' la stessa del
+  terzo controllore.
+
+DUE COSE EMERSE E NON ANCORA RIVENDICATE
+  - l'ondeggio laterale proprio di C2 su pavimento piano e' 15.9 mm contro
+    3.5 di C1 (4.5x). Coerente col +16% di cot della campagna, ma dev_lat e'
+    nella lista ritirata dal pavimento di rumore: va verificato prima di
+    scriverlo come risultato;
+  - il pavimento della misura e' 1.7x piu' alto per C2 che per C1: anche a
+    spinta trascurabile il flag di contatto reagisce a differenze minime.
+
+DUE VERSIONI DEL CRITERIO RITIRATE, ENTRAMBE PRIMA DI GUARDARE C3
+  1. La prima misurava la deviazione rispetto a y(t0). Sbagliata: l'andatura
+     a tripode fa ondeggiare il corpo di qualche millimetro da sola, e fino a
+     dv = 2 la spinta e' piu' piccola dell'ondeggio. Lo script dichiarava
+     "soglia di non recupero: dv = 0.00", cioe' bocciava la propria run di
+     controllo.
+     Rimedio: misura DIFFERENZIALE contro la run indisturbata. Il simulatore
+     e' deterministico (misurato il 23/9), quindi l'ondeggio si cancella
+     esattamente e resta solo la risposta alla spinta. La colonna
+     dev_grezza_mm conserva la misura vecchia per mostrare la differenza.
+  2. Bastava stare sopra il pavimento, senza margine. Rimedio: soglia di
+     leggibilita' a 3x, che non e' un numero scelto oggi ma la stessa regola
+     del pavimento di rumore del 23/9.
+  3. Il recupero si dichiarava su un RAPPORTO: 1 - fin/max puo' valere 0.6
+     anche recuperando due millimetri. Ora la quantita' recuperata deve
+     superare la stessa soglia di leggibilita'. Aggiunto PRIMA di misurare il
+     terzo controllore, non dopo.
+
+DOCUMENTAZIONE
+  docs/piano_mpc_simscape.md sezione 5 RITIRATA. Diceva che C2 arriva a
+  13-18 volte il datasheet AX-12A e che i limiti di coppia nel QP erano
+  l'argomento forte per il controllo ottimo. Quel numero e' del 22/9, prima
+  della correzione delle inerzie. Riletti i CSV della campagna rifatta:
+    tau_max massimo 14.6 N*m, ed e' su C1, ed e' un picco isolato fra vicini
+    a 1.87 e 2.87 - cioe' esattamente il tipo di valore che il pavimento di
+    rumore aveva gia' bocciato;
+    in RMS, giunto peggiore compreso, il robot sta dentro il datasheet su
+    ogni task (25-37%, picco 74%).
+  Il vincolo di coppia risolverebbe un problema che non esiste. La sezione
+  ora riporta la tabella vera e dove si e' spostato l'argomento.
+
+FILE
+  applica_disturbo.m   impulso laterale: External Force and Torque piu'
+                       convertitore e sorgente, aggiunti a run-time e mai
+                       salvati. Il convertitore e' copiato da uno dei 18 gia'
+                       nel modello invece di prenderlo dalla libreria.
+                       Modalita' 'controlla' che non tocca niente e stampa i
+                       nomi dei parametri, perche' oggi indovinarli e' gia'
+                       costato due giri.
+  script_T7.m          spazzata, criteri dichiarati in testa, due versioni
+                       ritirate documentate.
+  results/T7_C1.csv, results/T7_C2.csv
+
+phantomx_sim_zero.slx non e' mai stato salvato: i blocchi del disturbo
+vivono solo in memoria e un bdclose li porta via.

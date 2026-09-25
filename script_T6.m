@@ -29,7 +29,7 @@ t6_ctrl      = t6_nome_ctrl(t6_c2);
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T6', false, t6_mdl);
 % [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
-applica_inerzie(t6_mdl);
+% applica_inerzie(t6_mdl);
 
 fprintf('\nT6: controllore %s, sette ostacoli, %g s a velocita'' nominale\n', ...
         t6_ctrl, t6_dur);
