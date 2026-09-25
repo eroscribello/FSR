@@ -131,6 +131,13 @@ for t7_i = 1:numel(t7_J)
     % ---- terreno, inerzie, disturbo: si fissano qui, non si ereditano ----
     applica_terreno('T7', false, t7_mdl);
     applica_inerzie(t7_mdl);
+    % [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
+    % produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
+    % importato dall'URDF: correggere le inerzie del robot e lasciare a lui
+    % quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
+    % incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
+    % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+    allinea_stimatore(t7_mdl);
     applica_disturbo(t7_mdl, t7_J(t7_i), 'applica', ...
                      struct('t0', t7_t0, 'durata', t7_larg, 'asse', 'y'));
 

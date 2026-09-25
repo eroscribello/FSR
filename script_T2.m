@@ -45,6 +45,13 @@ applica_terreno('T2', false, t2_mdl);
 % e docs/piano_confronto.md sezione 9. Se il collega correggera' il .slx questa
 % riga diventa inutile e si toglie.
 applica_inerzie(t2_mdl);
+% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
+% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
+% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
+% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
+% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
+% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+allinea_stimatore(t2_mdl);
 
 t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);
 if t2_haTar

@@ -29,7 +29,14 @@ t6_ctrl      = t6_nome_ctrl(t6_c2);
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T6', false, t6_mdl);
 % [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
-% applica_inerzie(t6_mdl);
+applica_inerzie(t6_mdl);
+% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
+% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
+% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
+% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
+% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
+% 25/9. Vedi allinea_stimatore e results/diagnostica/valida_soglia.csv.
+allinea_stimatore(t6_mdl);
 
 fprintf('\nT6: controllore %s, sette ostacoli, %g s a velocita'' nominale\n', ...
         t6_ctrl, t6_dur);
@@ -46,7 +53,28 @@ t6_run = adatta_simscape(t6_out, struct( ...
 clear OVERRIDE_C2
 init_gait                                                      % ripristina cfg
 
+%% ---- taglio al bordo del pavimento, PRIMA delle metriche ----
+% [25/9] MANCAVA, ED E' UN ERRORE CHE FALSIFICA IL TASK.
+%   Il pavimento e' il cubo 8 x 8, quindi x in [-4, 4]. A velocita' nominale
+%   30 s sono ~3.6 m e i piedi arrivano 15-20 cm piu' avanti del corpo: un
+%   controllore un po' piu' veloce ESCE DAL PAVIMENTO e cade. metriche legge
+%   quella caduta come "ribaltamento", e superato diventa false anche se il
+%   percorso a ostacoli era stato completato.
+%   E' successo il 25/9 confrontando due terne di soglia: la run migliore
+%   usciva dagli ostacoli a t = 21.55 s, poi a t = 28.85 s un piede superava
+%   x = 3.95 m e a t = 29.64 s il rollio passava 30 gradi. Senza questo
+%   taglio, l'unica delle due che aveva superato il percorso risultava
+%   l'unica ad aver fallito.
+%   script_T4D lo fa gia' da giorni (t4d_taglia_bordo): qui mancava.
+[t6_run, t6_t_bordo] = t6_taglia_bordo(t6_run, 4 - 0.05);
+if ~isnan(t6_t_bordo)
+    fprintf(2, ['\n  Un piede supera il bordo del pavimento a t = %.2f s:\n' ...
+                '  la run e'' troncata li''. Quello che succede dopo e'' la caduta\n' ...
+                '  dal bordo, non il comportamento del controllore.\n'], t6_t_bordo);
+end
+
 t6_riga = metriche(t6_run, t6_cfg, struct('t_regime', 2*t6_cfg.T));
+t6_riga.t_bordo = t6_t_bordo;
 
 %% ---- il passaggio ----
 t6_P = t6_passaggio(t6_run, t6_soglia_su, t6_v_appoggio, t6_cfg, 2*t6_cfg.T);
@@ -228,4 +256,23 @@ end
 
 function s = t6_si(b)
 if b, s = 'si'; else, s = 'NO'; end
+end
+
+function [r, t_bordo] = t6_taglia_bordo(r, x_bordo)
+%T6_TAGLIA_BORDO  Tronca la run al primo campione con un piede oltre x_bordo.
+%   Stessa logica di t4d_taglia_bordo in script_T4D: il pavimento e' il cubo
+%   8 x 8 (x in [-4, 4]), e cfg.floor_dim non lo descrive.
+t_bordo = NaN;
+N = numel(r.t);
+if ~isfield(r,'pf') || isempty(r.pf), return; end
+k = find(any(r.pf(:, 1:3:18) > x_bordo, 2), 1, 'first');
+if isempty(k) || k < 2, return; end
+t_bordo = r.t(k);
+f = fieldnames(r);
+for i = 1:numel(f)
+    v = r.(f{i});
+    if (isnumeric(v) || islogical(v)) && size(v,1) == N && N > 1
+        r.(f{i}) = v(1:k-1, :);
+    end
+end
 end

@@ -35,7 +35,18 @@ function catena = abilita_log(stato, verbose, mdl)
 %
 % E I FLAG c_* NON SONO UN'ALTERNATIVA
 %   I sei c_lf..c_rr sono flag di contatto veri, ma nascono dal confronto
-%   |tau| > c2_soglia. In C1 la soglia e' infinita, quindi in anello aperto
+%   |tau_misurata - tau_attesa| > c2_soglia, con tau_attesa prodotta dal
+%   blocco Inverse Dynamics.
+%   [CORRETTO 25/9] QUI C'ERA SCRITTO  |tau| > c2_soglia,  SENZA LA
+%   DIFFERENZA. La regola vera e' stata letta nel modello risalendo il
+%   collegamento del Constant c2_soglia: Inverse Dynamics -> Reshape ->
+%   Subtract (segni "+-") -> Abs -> Demux -> Mux -> Relational Operator, sei
+%   volte, una per zampa. E' la forma del paper (Arrigoni et al. par. 5), non
+%   una soglia di coppia secca. La differenza non e' accademica: significa
+%   che il flag dipende da quanto e' accurato il modello dello stimatore, ed
+%   e' il motivo per cui dal 22 al 25 settembre non ha funzionato (vedi
+%   allinea_stimatore e docs/piano_confronto.md sezione 11).
+%   In C1 la soglia e' infinita, quindi in anello aperto
 %   valgono ZERO per costruzione: usarli come contatto darebbe
 %   appoggio_medio = 0 su ogni run C1, che e' peggio di un NaN perche'
 %   sembra un dato. In C1 l'unica sorgente di contatto e' la forza.

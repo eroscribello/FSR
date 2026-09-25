@@ -374,8 +374,19 @@ task, calendario — è in **`docs/piano_confronto.md`**.
 | **C3** | MPC convesso | funzionante sul simulatore ridotto |
 
 L'interruttore fra C1 e C2 non richiede blocchi aggiuntivi: la retroazione blocca la
-zampa quando `|tau|` supera una soglia, quindi con soglia infinita il confronto è
-sempre falso e il comportamento torna quello ad anello aperto.
+zampa quando `|tau_misurata − tau_attesa|` supera una soglia su almeno uno dei tre
+giunti, con `tau_attesa` calcolata dal blocco `Inverse Dynamics`.
+
+> **[CORRETTO 25/9]** Qui era scritto `|tau|` **senza la differenza**, e in
+> `abilita_log.m` lo stesso. La regola vera è stata letta nel modello risalendo il
+> collegamento del `Constant c2_soglia`. Non è una precisazione formale: il flag
+> dipende dall'accuratezza del modello dello stimatore, ed è per questo che
+> correggere le inerzie del solo robot lo ha reso inutilizzabile. Vedi
+> `allinea_stimatore` e `docs/piano_confronto.md` §11.
+
+Con soglia infinita il confronto è sempre falso — ma **questo non dà l'anello
+aperto**: l'interruttore vero è `cfg.c2.attiva`, vedi
+`docs/come_funziona_ricerca_terreno.md` §6.
 
 ```matlab
 cfg.c2.attiva = false;   % C1, anello aperto  (c2_soglia = inf)

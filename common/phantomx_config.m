@@ -244,7 +244,25 @@ cfg.contact.vcrit = 1e-2;   % [TARATO] regolarizzazione attrito, 10 mm/s
 cfg.mu_plant = 0.9;
 cfg.mu_mpc   = 0.6;
 
-cfg.floor_dim = [4 4 0.05];
+% [CORRETTO 25/9] floor_dim DESCRIVEVA UN BLOCCO CHE NON ESISTE PIU'.
+%   Valeva [4 4 0.05]: erano le dimensioni del Brick Solid usato come pavimento
+%   nelle prime versioni. Oggi il pavimento e' il File Solid con la mesh
+%   ProvaPianoImperfettoCube.stl, che il bounding box misura
+%       x,y in [-4, +4]   z in [-0.05, +0.05]     cioe' 8 x 8 x 0.1 m
+%   Il vecchio valore era quindi la META' su ogni componente.
+%   script_T4D lo aveva gia' annotato due volte ("cfg.floor_dim non lo
+%   descrive") senza correggerlo.
+%
+%   IL RISULTATO NON CAMBIA, E VA VERIFICATO CHE NON CAMBI.
+%   Con il valore vero, floor_off diventa 0.05 - che e' esattamente l'offset
+%   scritto a mano nel Rigid Transform del pavimento - e la compensazione
+%   cfg.terreno.ost_dz non serve piu' (vedi li'). La somma che arriva ai
+%   blocchi e' la stessa di prima:
+%       prima:  floor_off 0.025 + ost_dz 0.025 = 0.05
+%       adesso: floor_off 0.050 + ost_dz 0     = 0.05
+%   e floor_top resta 0. Quindi una campagna rifatta deve dare CSV identici:
+%   se non li da', la correzione e' sbagliata e va rimessa indietro.
+cfg.floor_dim = [8 8 0.1];    % [MISURATO 25/9] bounding box della mesh
 cfg.floor_off = [0 0 +cfg.floor_dim(3)/2];
 cfg.floor_top = -cfg.floor_off(3) + cfg.floor_dim(3)/2;
 
@@ -312,11 +330,24 @@ cfg.terreno.n_prop   = 7;
 % degli ostacoli hanno l'asse z opposto a quello del mondo, come gia' visto
 % su floor_off. Con -5 gli ostacoli finiscono in aria sopra il robot.
 cfg.terreno.z_spento = +5;        % [m] quota di parcheggio
-% [MISURATO] Gli ostacoli sono posati sul Cube, la cui superficie sta 25 mm
-% sopra quella del pavimento liscio (Brick: spessore 0.05 centrato a 0.025 ->
-% 0.050; Cube: mesh +-0.05 -> 0.075). Segno POSITIVO: la z di quel Rigid
-% Transform e' opposta a quella del mondo, con -0.025 l'ostacolo sale.
-cfg.terreno.ost_dz = 0.025;       % [m]
+% [RITIRATO 25/9] ERA LA COMPENSAZIONE DI UN floor_dim SBAGLIATO.
+%   Il commento precedente diceva: "gli ostacoli sono posati sul Cube, la cui
+%   superficie sta 25 mm sopra quella del pavimento liscio (Brick: spessore
+%   0.05 centrato a 0.025 -> 0.050; Cube: mesh +-0.05 -> 0.075)".
+%   Era vero quando il pavimento era un Brick Solid. Oggi il pavimento E' il
+%   Cube: la sua superficie e quella su cui poggiano gli ostacoli sono la
+%   stessa cosa, e non c'e' nessun dislivello da compensare.
+%   I 25 mm servivano solo perche' floor_dim era la meta' del vero, quindi
+%   floor_off veniva 0.025 invece di 0.05. Corretto floor_dim, la somma torna
+%   da sola e questo termine va a zero.
+%
+%   MISURATO sulle mesh (bounding box, 25/9): gli ostacoli hanno la base a
+%   z = +0.05015 locale, cioe' 0.15 mm sopra la faccia superiore del Cube
+%   (+0.05). Poggiano gia' sul pavimento per costruzione.
+%
+%   Resta il meccanismo, se un giorno servisse: positivo = verso il basso,
+%   perche' la z di quei Rigid Transform e' opposta a quella del mondo.
+cfg.terreno.ost_dz = 0;           % [m]
 
 % [SCELTO 21/9] Spostamento degli ostacoli lungo il percorso, PER TASK.
 % L'ostacolo 1 sta a 16 cm dalla partenza: in T5 il robot ci arrivava a 1.2 s,
@@ -379,7 +410,40 @@ cfg.c2.attiva     = true;    % false = C1, anello aperto vero
 % calcolava c2_soglia e nessun blocco la leggeva (verificato con
 % trova_nel_modello e Simulink.findVars il 23/9). Adesso il Constant vale
 % c2_soglia e questo e' il valore vero, quindi il comportamento non cambia.
-cfg.c2.soglia_tau = [0.04 0.1 0.1];   % [N*m] coxa, femore, tibia
+% [MISURATO 25/9] LA TERNA E' STATA TARATA DA NOI, E NON E' PIU' UN OR SU TRE
+% GIUNTI: LA COXA E' DI FATTO ESCLUSA.
+%   Fino al 25/9 qui c'era [0.04 0.1 0.1], il valore che sta nel Constant del
+%   modello. Validandolo (valida_soglia, dopo allinea_stimatore) e' venuto
+%   fuori che sulla COXA le due distribuzioni di |tau_mis - tau_att| si
+%   sovrappongono: p90 in volo 0.0421 contro p10 a terra 0.0469. La coxa
+%   ruota attorno all'asse verticale, quindi il contatto - che e' verticale -
+%   le trasmette pochissima coppia, mentre in volo porta tutta
+%   l'accelerazione laterale della zampa. Rapporto segnale/rumore basso per
+%   costruzione: con 0.04 il flag scattava sul 39.7% della fase di volo.
+%   soglia_ottima ha scelto da solo di portarla a 0.385, sopra la sua stessa
+%   mediana in appoggio: non e' una taratura piu' fine, e' spegnerla. Il
+%   contatto lo rilevano femore e tibia, che separano bene.
+%
+%   MISURA CHE L'HA DECISA (results/diagnostica/prova_soglia_T6*.csv):
+%   T6, C2, due run, metriche su finestra comune fino a x = 3.043 m:
+%                        [0.04 0.1 0.1]   [0.385 0.136 0.105]
+%     esce dagli ostacoli      MAI            t = 21.55 s
+%     roll_max                0.160            0.122
+%     roll_rms                0.0580           0.0286
+%     dev_lat_max             0.539            0.281
+%     yaw_err_fin            -0.546           +0.098
+%     cot                      2.085            1.330
+%     energia [J]            100.2             63.2
+%     tau_max [N*m]            6.86             8.38   <-- unico peggioramento
+%   Su T2, terreno piano, le due sono equivalenti: e' su T6 che si decide,
+%   perche' li' la ricerca del terreno serve davvero.
+%
+%   TRE CIFRE E NON QUATTRO: l'ottimo viene da una run sola, la quarta cifra
+%   sarebbe una precisione che non abbiamo.
+%
+%   VA DICHIARATO IN RELAZIONE: questo parametro NON e' piu' quello del
+%   modello di partenza, l'abbiamo scelto noi con il criterio qui sopra.
+cfg.c2.soglia_tau = [0.385 0.136 0.105];   % [N*m] coxa, femore, tibia
 
 % Parametri della ricerca del terreno (Arrigoni et al. §5). Erano cablati
 % dentro i due blocchi MATLAB Function, quindi invisibili a git e duplicati:

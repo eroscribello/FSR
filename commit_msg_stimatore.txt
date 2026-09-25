@@ -1,0 +1,189 @@
+C2 non cercava il terreno: stimatore disallineato dal 22/9, corretto
+
+PERCHE' QUESTO COMMIT ESISTE
+
+Il flag di contatto di C2 non e' una soglia sulla coppia misurata. Il modello
+calcola
+
+    cont = OR( |tau_misurata - tau_attesa| > cfg.c2.soglia_tau )   sui 3 giunti
+
+e tau_attesa la produce il blocco Inverse Dynamics, che porta dentro un
+rigidBodyTree importato dall'URDF (Setup_robot_object.m).
+
+Il 22/9 abbiamo corretto le inerzie del robot con applica_inerzie, che agisce
+sui 25 Solid di Simscape. Il rigidBodyTree dello stimatore NON viene toccato.
+Da quel giorno il robot simulato e il modello che ne prevede la coppia sono
+due robot diversi, con inerzie che differiscono di ~1000 volte: la differenza
+|tau_mis - tau_att| e' grande sempre, con o senza contatto, e il flag resta
+acceso.
+
+Con il flag incollato a 1, in ricerca_terreno non si entra mai nel ramo
+c(i) == 0, che e' l'UNICO che fa crescere z_ext e l'unico che azzera z_ext e
+z_hold. Il comando degenera in min(z, z_hold(t_reset)): una costante.
+
+    Dal 22 al 25 settembre C2 non ha cercato il terreno.
+
+Niente lo segnalava: il robot cammina, l'animazione e' plausibile, le metriche
+escono. Le righe C2 di ogni tabella prodotta dopo il 22/9 non descrivono C2.
+
+
+LA MISURA
+
+valida_soglia.m, una sola run T2 C2 da 10 s. Nel log ci sono insieme
+torque_sens, torque_estim e Fleg, quindi il flag si ricalcola offline per
+qualunque soglia e si confronta con la forza normale al piede, che e' la
+verita'. Tre configurazioni, soglia [0.04 0.1 0.1]:
+
+                                  disallineato   entrambi URDF   allineato
+                                   (22-25/9)      (fino al 22/9)  (da oggi)
+  errore in appoggio                  7.0%            0.9%          0.6%
+  errore di un flag SEMPRE acceso     7.0%            8.7%          3.2%
+  il flag e' meglio della costante?   NO               si            si
+  flag acceso in volo                95.1%            8.3%         41.9%
+  voli senza reset di z_ext          20/60            1/60          2/60
+  appoggi non rilevati                0/79            0/86          0/67
+
+La colonna di sinistra e' la diagnosi: un flag binario che vale sempre 1
+sbaglia esattamente quanto la frazione di appoggio senza forza, e non porta
+informazione.
+
+
+LA CORREZIONE
+
+allinea_stimatore.m riscrive massa e inerzia dei corpi di robotModel con gli
+stessi cfg.I_* di applica_inerzie e forza la maschera del sottosistema
+Inverse Dynamics a rivalutare. In memoria, nessun save_system, come
+applica_terreno e applica_inerzie.
+
+Fa tre verifiche in sequenza - scrittura sull'oggetto, ripiego su replaceBody,
+rilettura del mask workspace - e si ferma con errore se una non passa: un
+fallimento silenzioso qui rimetterebbe in piedi il problema che sta chiudendo.
+
+Va chiamata SEMPRE subito dopo applica_inerzie. Aggiunta a script_T2, T3, T4,
+T4D, T5, T6, T7, spazzata_soglia e valida_soglia.
+
+
+LA SOGLIA, RITARATA
+
+Con lo stimatore allineato il flag funziona, ma con [0.04 0.1 0.1] resta
+acceso sul 41.9% della fase di volo, e per il 39.7% e' colpa della sola coxa:
+p90 in volo 0.0421 contro p10 a terra 0.0469, distribuzioni sovrapposte. Ha
+senso fisico - la coxa ruota attorno all'asse verticale e il contatto e'
+verticale, quindi le trasmette pochissima coppia, mentre in volo porta tutta
+l'accelerazione laterale della zampa.
+
+soglia_ottima.m ha scelto [0.385 0.136 0.105]: sulla coxa sopra la sua stessa
+mediana in appoggio, cioe' spegnerla. NON e' una ritaratura, e' un cambio di
+regola: il flag diventa un OR su due giunti.
+
+Decisa su T6 (prova_soglia_T6.m), dove l'esito e' binario e non soggetto al
+rumore di misura:
+
+    [0.04 0.1 0.1]       non esce mai dalla zona ostacoli in 30 s
+    [0.385 0.136 0.105]  ne esce a t = 21.55 s
+
+Su T2, terreno piano, le due terne sono equivalenti. Tre cifre e non quattro:
+l'ottimo viene da una run sola.
+
+VA DICHIARATO IN RELAZIONE che questo parametro non e' piu' quello del modello
+di partenza: l'abbiamo scelto noi, con il criterio e la misura qui sopra.
+
+
+UN ERRORE DI DEFINIZIONE DEL TASK, TROVATO PER STRADA
+
+script_T6 non troncava la run al bordo del pavimento, mentre script_T4D lo fa
+da giorni. Il pavimento e' il cubo 8 x 8; t6_dur = 30 s a velocita' nominale
+sono ~3.6 m e i piedi arrivano 15-20 cm davanti al corpo. Nella run migliore:
+
+    esce dagli ostacoli   t = 21.55 s,  x = 2.709 m
+    piede oltre il bordo  t = 28.85 s,  x = 3.696 m
+    rollio > 30 gradi     t = 29.64 s,  x = 3.907 m   <- 0.79 s DOPO
+
+metriche leggeva quella caduta come "ribaltamento": l'unica delle due run che
+aveva completato il percorso risultava l'unica ad aver fallito. Aggiunto
+t6_taglia_bordo e la colonna t_bordo.
+
+Resta da decidere: T6 e' al limite del pavimento per costruzione. O si
+accorcia t6_dur, o si allarga il pavimento. Va fatto prima di misurare C3.
+
+
+LE INERZIE DELL'URDF: LA PROVA, CHE MANCAVA
+
+piano_confronto.md sezione 9 affermava il fattore mille senza mostrarlo.
+Aggiunte due prove indipendenti:
+
+  1. raggio di girazione, da I = m*r^2: il corpo avrebbe la massa a 1.79 m dal
+     centro (25 cm di lato), ogni link a 0.46 m (2-12 cm). Letti in kg*m^2,
+     come impone lo standard URDF, quei numeri descrivono un oggetto che non
+     esiste. Non e' questione di unita' o di sorgente.
+  2. i 24 link hanno inerzia IDENTICA. Coxa, femore e tibia hanno forma e
+     lunghezza diverse: e' un valore segnaposto, non una misura.
+
+Le masse invece sono giuste: e' sbagliato solo il blocco <inertia>, e
+dividendo per 1000 tutto rientra - la firma dell'errore di esportazione CAD
+con la massa in grammi.
+
+
+VERIFICHE FATTE
+
+  - allinea_stimatore riporta 25/25 corpi, gia_allineati = 0, verificato = 1
+  - rifatta T2 C1 dopo l'allineamento: CSV IDENTICO (git diff vuoto). In C1
+    par(1) = 0, il flag non e' nel percorso del comando, quindi le righe C1
+    della campagna restano valide e non vanno rifatte.
+  - la soglia imposta arriva davvero al modello: valida_soglia rilegge
+    c2_soglia dopo init_gait e si ferma se non corrisponde.
+
+
+STATO DELLA CAMPAGNA - PARZIALE, LEGGERE PRIMA DI USARE I CSV
+
+  rifatte con stimatore allineato e terna nuova:  T2_C2, T4_C2, T5_C2
+  ANCORA DA RIFARE:                               T3_C2, T4D_C2, T6_C2, T7_C2
+  valide, non toccate:                            tutte le righe C1
+  archiviate:  results/storico/stimatore_disallineato/  (le C2 del 22-25/9)
+  non valida:  results/diagnostica/spazzata_soglia.csv  (23/9, stimatore rotto)
+
+
+COSE APERTE
+
+  1. Il pavimento di rumore (results/diagnostica/rumore_metriche.csv) e' del
+     23/9, misurato con lo stimatore disallineato. Applicando la regola del
+     progetto - differenza leggibile solo se >= 3x il rumore - NESSUNA delle
+     differenze fra C2 nuova e C1 su T5 sopravvive. Prima di dichiarare
+     qualunque confronto su terreno regolare va rimisurato il rumore con lo
+     stimatore allineato. L'esito binario di T6 non ne risente.
+  2. Il filtro da 50 ms. L'InitFcn del modello costruisce sys_filter: 18
+     filtri del primo ordine, polo a -20 rad/s, sovrascrivibile con
+     tau_filtro. Nessun documento del progetto lo menzionava. Se e' sul
+     percorso della coppia misurata aggiunge 50 ms di ritardo al confronto
+     mentre tau_attesa e' calcolata su q, qd, qdd istantanei: e' il primo
+     candidato a spiegare l'8% di flag acceso in volo che resta.
+  3. Su T2 il beccheggio di C2 e' 2-5 volte quello di C1 su tutte le celle
+     che funzionano, in valore assoluto piccolo ma sistematico: la ricerca
+     lavora anche dove non c'e' niente da trovare.
+  4. contact_sched concorda col contatto reale solo al 60-67% su terreno
+     accidentato.
+  5. taratura_T2.m e script_T4_limite.m non chiamano applica_inerzie ne'
+     allinea_stimatore: aggiungerle cambia i loro risultati, non e' neutra.
+  6. salva_grafico.m scrive in grafici/inerzie_og/, residuo dell'indagine del
+     15/9.
+
+
+FILE NUOVI
+
+  allinea_stimatore.m    corregge il rigidBodyTree dello stimatore
+  valida_soglia.m        misura il flag contro la forza vera, una run sola
+  soglia_ottima.m        la terna per giunto, dai dati di una run gia' fatta
+  prova_soglia_T6.m      A/B fra due terne su T6, finestra comune in x
+
+FILE MODIFICATI
+
+  common/phantomx_config.m   soglia_tau [0.04 0.1 0.1] -> [0.385 0.136 0.105]
+  script_T6.m                taglio al bordo + allinea_stimatore
+  script_T2/T3/T4/T4D/T5/T7  allinea_stimatore
+  spazzata_soglia.m          allinea_stimatore
+  abilita_log.m, README.md   la regola del flag: |tau| -> |tau_mis - tau_att|
+  docs/piano_confronto.md    sezione 9: le prove sulle inerzie
+                             sezione 11: tutta questa ricostruzione
+  docs/come_funziona_ricerca_terreno.md
+                             sezione 5-bis: da dove viene il flag e cosa
+                             succede con c == 1; corretta la riga soglia_tau

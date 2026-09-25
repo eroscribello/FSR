@@ -164,11 +164,62 @@ Tutti in `phantomx_config.m`, sezione `cfg.c2`.
 | `cfg.c2.z_ext_max` | `0.03 m` | estensione massima sotto la nominale |
 | `cfg.c2.t_reset` | `0.5 s` | nessuna ricerca nel transitorio iniziale |
 | `cfg.c2.tol` | `0.002 m` | tolleranza sulla soglia di abbassamento |
-| `cfg.c2.soglia_tau` | `0.5 N·m` | soglia di coppia del flag di contatto |
+| `cfg.c2.soglia_tau` | `[0.385, 0.136, 0.105] N·m` | soglia **per giunto** del flag di contatto |
+
+> **[CORRETTO 25/9]** Questa riga diceva `0.5 N·m`, uno scalare. È sbagliata due
+> volte. La soglia è un **vettore di tre**, una per giunto (coxa, femore, tibia), e
+> il valore `0.5` non è mai arrivato al modello: fino al 23/9 nessun blocco leggeva
+> `c2_soglia`. Il valore attuale è stato **tarato da noi** il 25/9 partendo da
+> `[0.04, 0.1, 0.1]`, che era quello del modello. Sulla coxa la soglia è
+> volutamente altissima: la sua distribuzione di `|Δτ|` in appoggio e in volo si
+> sovrappone, quindi il giunto è **escluso di fatto** e il contatto lo rilevano
+> femore e tibia. Motivazione e misure in `common/phantomx_config.m` e
+> `docs/piano_confronto.md` §11.
 
 `z_nom` è **legato** a `cfg.z0`, non riscritto: se si ritara `z0`, la soglia
 segue. Prima erano due `0.14` indipendenti, e ritarare l'uno sfasava l'altro
 senza dirlo.
+
+---
+
+## 5-bis. [25/9] Da dove viene il flag di contatto, e cosa succede se resta acceso
+
+I sei flag `c_lf`…`c_rr` che entrano in questi blocchi **non** sono una soglia sulla
+coppia misurata. La regola, letta nel `.slx` risalendo il collegamento del
+`Constant c2_soglia`, è
+
+```
+Inverse Dynamics → Reshape → Subtract [+ −] → Abs → Demux → Mux → Relational Operator
+                                    ↑                                      ↑
+                              tau_misurata                            c2_soglia
+```
+
+cioè `cont = OR( |τ_misurata − τ_attesa| > soglia )` sui tre giunti, con `τ_attesa`
+prodotta da un blocco `Inverse Dynamics` che porta dentro un `rigidBodyTree`
+importato dall'URDF. È la forma del paper.
+
+**Conseguenza da tenere a mente:** il flag dipende da quanto il modello dello
+stimatore somiglia al robot simulato. Se i due divergono, `|Δτ|` è grande sempre e
+il flag resta acceso — che è quello che è successo dal 22 al 25 settembre.
+
+### Cosa fa `ricerca_terreno` con il flag incollato a 1
+
+Guardando i rami: `z_ext` cresce **solo** dentro `if c(i) == 0`, e `z_ext`/`z_hold`
+si azzerano **solo** lì. Con `c ≡ 1` non si entra mai in quel ramo, quindi
+
+- `z_ext` resta a `0` per sempre → **nessuna ricerca del terreno**;
+- `z_hold` resta il valore preso all'ultimo reset, cioè a `t_reset`;
+- il comando diventa `z_out = min(z, z_hold(t_reset))`, una **costante**.
+
+Non è una ricerca degradata: è un tosatore di profondità. E non lo segnala niente —
+l'animazione resta plausibile, il robot cammina, le metriche escono. Per questo la
+diagnosi ha richiesto di misurare il flag contro la forza vera (`valida_soglia.m`).
+
+Un caso intermedio conta quasi quanto: il flag che si alza **prima** del contatto.
+Lì si entra nel ramo `else`, `z_out = min(z + z_ext, z_hold)`, e la zampa **si
+congela alla quota che aveva in quel momento**. Su terreno piano non si vede; su un
+dislivello la zampa resta per aria. Con la terna `[0.04, 0.1, 0.1]` il flag si
+alzava in mediana **220 ms prima** del contatto.
 
 ---
 

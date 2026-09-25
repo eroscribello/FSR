@@ -413,6 +413,67 @@ Il corpo si comporta come se la sua massa stesse a 1.7 m dal centro, ogni link
 come un'asta da mezzo metro. Per il corpo il valore plausibile torna con il
 conto a mano di un parallelepipedo da 1 kg e 25 × 20 × 5 cm.
 
+#### [25/9] La prova, che qui mancava
+
+Fino a oggi questa sezione **affermava** il fattore mille senza mostrarlo, e la
+domanda è arrivata giusta: *«siamo sicuri? le avevo prese da un GitHub
+ufficiale»*. La provenienza è vera e non è in discussione — mesh, cinematica,
+struttura e **masse** di quell'URDF sono buone. Ma la provenienza non rende
+fisici i numeri. Due prove indipendenti, entrambe rifacibili in tre righe.
+
+**Prima prova: il raggio di girazione.** Da `I = m·r²`, un corpo rigido non può
+avere `r` maggiore della propria dimensione massima. È geometria, non
+convenzione né unità di misura.
+
+| corpo | `I_xx` URDF | massa | **raggio di girazione** | dimensione vera |
+|---|---|---|---|---|
+| `MP_BODY` | 3.108 kg·m² | 0.976 kg | **1.79 m** (su `I_yy`: 2.56 m) | 25 cm |
+| ogni link | 5.14·10⁻³ kg·m² | 0.0244 kg | **0.46 m** (su `I_yy`: 0.58 m) | 2–12 cm |
+
+Letti in kg·m², che è ciò che lo standard URDF impone, quei numeri descrivono un
+oggetto che non esiste.
+
+**Seconda prova: i 24 link sono identici.**
+
+```
+ixx=0.0051411124   iyy=0.0081915737   izz=0.0011379812      × 24, uguali
+```
+
+Coxa (`c1`, ~2 cm), femore (`thigh`, ~7 cm) e tibia (~12 cm) hanno forma e
+lunghezza diverse: non possono avere la stessa inerzia. È un **valore
+segnaposto copiato**, non una misura. Negli URDF di comunità, nati per
+visualizzazione e cinematica, è il campo che più spesso resta al default.
+
+**Le masse invece sono giuste** (0.976 kg il corpo, 24.4 g per link, plausibili
+e coerenti): chi ha esportato l'URDF aveva la geometria, è sbagliato solo il
+blocco `<inertia>`. Dividendo per 1000 tutto rientra nell'ordine di grandezza
+giusto — la firma dell'errore di esportazione CAD con la massa in **grammi**
+nel calcolo dell'inerzia.
+
+**Controprova sui valori sostitutivi.** `cfg.I_body` coincide con il calcolo a
+mano di un parallelepipedo da 1 kg e 25 × 20 × 5 cm entro il 3%:
+
+| | `cfg.I_body` | scatola a mano |
+|---|---|---|
+| `I_xx` | 3.557·10⁻³ | 3.455·10⁻³ |
+| `I_yy` | 5.154·10⁻³ | 5.284·10⁻³ |
+| `I_zz` | 8.565·10⁻³ | 8.333·10⁻³ |
+
+**Cosa resta incerto, e va detto.** Che l'URDF sia sbagliato è certo. Che
+`cfg.I_c1`, `I_c2`, `I_thigh`, `I_tibia` siano i valori *esatti* no: sono stime
+per pezzo, non misure. Sono però certamente più vicine del vero di un unico
+numero uguale per tre pezzi diversi e sbagliato di mille volte.
+
+**Verifica in tre righe**, senza fidarsi di questo documento:
+
+```matlab
+rm = importrobot("phantomx_description-master\urdf\phantomx.urdf");
+for k = [1 2 25]
+    b = rm.Bodies{k};
+    fprintf('%-10s m=%.4f kg   r_girazione = %.2f m\n', b.Name, b.Mass, sqrt(b.Inertia(1)/b.Mass));
+end
+```
+
 **Perché non si vedeva:** in C1 e C2 i giunti sono comandati **in posizione**.
 Il simulatore impone la traiettoria qualunque sia l'inerzia, quindi l'andatura
 in animazione è corretta. Cambiano le coppie registrate e la reazione del corpo.
@@ -1063,3 +1124,420 @@ contatto è rifiutato da Simulink.
   durante un salvataggio può corrompersi, e `git pull` fallisce con
   *«unable to create file … File exists»*. Consigliato spostare il lavoro in
   locale e usare Drive solo per la condivisione.
+
+---
+
+## 10. [25/9] I video del 15 settembre: erano le inerzie, e C2 non è mai cambiato
+
+**In due righe.** Il C2 che nei video del 15 settembre sembrava molto migliore
+è il C2 con le inerzie dell'URDF, sbagliate di ~1000 volte: rilanciato oggi
+con quelle inerzie, T6 riproduce la run archiviata **a sei cifre**. Il codice
+di C2 è rimasto identico dal 15 settembre: stessa logica, stessi cinque
+parametri. Le tabelle della campagna misurano il controllore del paper.
+
+### Perché abbiamo speso due giorni su questo
+
+Rivedendo i video del 15 settembre, C2 su T6 si comporta molto meglio di come
+si comporta oggi. La domanda non era nostalgica: **se C2 oggi fosse scritto o
+tarato male, una parte degli scarti che leggiamo nelle tabelle non misurerebbe
+il controllore del paper, misurerebbe un difetto nostro** — e C3 verrebbe
+progettato per correggere quel difetto, cioè contro un fantoccio.
+
+Sistemare C2 prima non era un ripiego: era la condizione perché il confronto
+fra i tre controllori voglia dire qualcosa.
+
+### Il risultato: la logica di C2 è identica
+
+Il codice del 15/9 vive dentro i due blocchi `MATLAB Function2` (SID 1134) e
+`MATLAB Function3` (SID 1159), 71 righe ciascuno, con le costanti cablate. Il
+`.slx` è binario, quindi git lo conserva ma non lo mostra: è stato estratto
+con `estrai_funzioni.m` e confrontato riga per riga con `ricerca_terreno.m`.
+
+**Stessa logica**, ramo per ramo: stessa condizione `z >= z_nom - tol`, stesso
+`min(z_ext + v_search*dt, z_ext_max)`, stesso `min(z + z_ext, z_hold)` al
+contatto, stessa guardia `dt <= 0 || dt > 0.1 -> 0.001`, stesso reset nel
+transitorio.
+
+**Stesse costanti**, tutte e cinque:
+
+| | 15/9, cablate | oggi, da `c2_par` |
+|---|---|---|
+| `z_nominal` | 0.14 | `cfg.c2.z_nom = cfg.z0` = 0.14 |
+| `v_search` | 0.06 | `cfg.c2.v_search` = 0.06 |
+| `z_ext_max` | 0.03 | `cfg.c2.z_ext_max` = 0.03 |
+| tolleranza | 0.002 | `cfg.c2.tol` = 0.002 |
+| reset | `t < 0.5` | `cfg.c2.t_reset` = 0.5 |
+
+**I due tripodi erano uguali fra loro.** Il diff fra `MATLAB Function2` e
+`MATLAB Function3` del 15/9 mostra solo rinomine (`lf,lr,rm` contro
+`rf,rr,lm`) e spazi. Il timore scritto in `come_funziona_ricerca_terreno.md`
+— che due copie potessero divergere in silenzio — non si era materializzato.
+
+L'unica differenza vera: il blocco del 15/9 **non ha l'interruttore C1/C2**
+(`par(1)` non esiste, la ricerca è sempre attiva). Riguarda C1, non C2.
+
+> **Conclusione.** C2 è algoritmicamente identico a quello dei video, con gli
+> stessi cinque parametri. Le tabelle della campagna misurano il controllore
+> del paper, non una nostra versione storpiata.
+
+### La config è identica
+
+`git show 1cb101d:common/phantomx_config.m`: `z0`, `z0_eff`, `T`, `S`, `H`,
+`floor_dim`, `floor_off`, `floor_top` e la formula di `body_z0` sono gli
+stessi di oggi. In particolare `cfg.H = 0.05`: il commit del 15/9 si intitola
+«cambiato cfg.H» perché lo ha portato *a* quel valore, che è ancora quello di
+oggi.
+
+### Il percorso di T6, misurato dalle mesh
+
+Non era documentato da nessuna parte. Letto dai bounding box degli `.stl`
+(altezze riferite alla faccia superiore del pavimento):
+
+| mesh | x [m] | y [m] | altezza |
+|---|---|---|---|
+| Ostacolo1 | 0.43 – 0.76 | tutta la larghezza | **35 mm** |
+| Ostacolo5 | 0.73 – 1.06 | tutta la larghezza | **70 mm** |
+| Ostacolo6 | 1.00 – 1.33 | tutta la larghezza | **106 mm** |
+| Ostacolo7 | 1.23 – 1.56 | tutta la larghezza | **70 mm** |
+| Ostacolo2 | 2.03 – 2.41 | 0.015 – 0.340 | 35 mm |
+| Ostacolo3 | 2.32 – 3.13 | −0.396 – −0.070 | 35 mm |
+| Ostacolo4 | 2.47 – 3.28 | −0.396 – −0.070 | 70 mm (sopra il 3) |
+
+Due tratti:
+
+- **x da 0.43 a 1.56: una scala** di quattro sbarre che attraversano tutta la
+  pista, 35 → 70 → 106 → 70 mm, sovrapposte in x. **Non si aggira**: o si sale
+  o ci si ferma;
+- **x da 2.0 a 3.3**: ostacoli locali, laterali, col 4 impilato sul 3.
+
+**Il terzo gradino è 106 mm contro `cfg.H = 50 mm` di alzata del piede in
+volo.** Il robot non può scavalcarlo: può solo salirci passando dai gradini da
+35 e 70. È il motivo per cui su T6 «distanza percorsa» è la metrica che conta
+davvero — dice **fino a che gradino sono arrivati** — e per cui i due
+controllori incontrano ostacoli diversi.
+
+Questo spiega anche `alt_ost` (mediana dell'altezza degli ostacoli calpestati):
+4.3 cm per C1, che si ferma presto sulla scala, contro 6.2 cm per C2, che
+arriva più in alto. Non è un'incongruenza: è la scala.
+
+### Le quattro differenze ipotizzate
+
+| # | ipotesi | esito |
+|---|---|---|
+| 1 | quota degli ostacoli | **cade**: pavimento e ostacoli ricevono lo stesso offset in entrambe le versioni, e l'altezza relativa è nelle mesh, che sono le stesse. Gli ostacoli sporgono 35/70/106 mm in tutti e due i casi |
+| 2 | inerzie URDF → corrette | **è questa** — vedi sotto |
+| 3 | mappa dei contatti | **cade**: è la corrispondenza `File Solid k` → `Spatial Contact Force`, e `applica_terreno` **nasce** nel commit che la corregge. Il 15/9 non esisteva né la funzione né la mappa |
+| 4 | soglia di C2 fuori dal `.slx` | **cade**: il valore `[0.04 0.1 0.1]` è quello che era cablato, verificato il 23/9 |
+
+### [CHIUSO 25/9] La risposta: sono le inerzie
+
+T6 con C2 rilanciato oggi, con `applica_inerzie` commentata — cioè con le
+inerzie dell'URDF, le stesse che aveva il modello del 15/9 — contro la run
+archiviata del 21/9:
+
+| | pitch_max | roll_max | distanza | yaw fin | cot | energia | `alt_ost` |
+|---|---|---|---|---|---|---|---|
+| archivio 21/9, URDF | 14.390° | 8.085° | 3.680 m | −4.525° | 5.295 | 303.096 | 5.3 cm |
+| run del 25/9, URDF | **14.390°** | **8.085°** | **3.680 m** | **−4.525°** | **5.295** | **303.096** | **5.3 cm** |
+
+**Identiche a sei cifre.** Il C2 «migliore» dei video è il C2 con le inerzie
+sbagliate, e si riproduce a comando.
+
+Non è un risultato nuovo: è esattamente quello che la § T6 dice dal 23/9 —
+*«era il risultato più forte a favore di C2 in tutta la campagna, ed era un
+artefatto del modello»*. L'indagine lo conferma per una via indipendente,
+partendo dai video invece che dalle tabelle.
+
+> **Perché il primo tentativo era sembrato fallire.** Ricommentare
+> `applica_inerzie` era stato provato subito, e giudicato guardando
+> l'animazione. Su un percorso a gradini due run identiche possono sembrare
+> diverse: la traiettoria è la stessa ma l'occhio non lo certifica. I numeri
+> coincidono a sei cifre. **Un confronto fra run si fa sui CSV, non sul
+> video** — ed è la stessa regola che il pavimento di rumore ci aveva già
+> imposto sulle colonne.
+
+La quota assoluta del terreno resta diversa fra le due versioni (il 15/9 tutti
+gli otto solidi a `floor_off` = 0.025, oggi a 0.05) ma **non serve più
+indagarla**: le inerzie da sole rendono conto di tutto lo scarto, sulle nove
+colonne confrontate.
+
+### Difetti veri trovati per strada
+
+**`cfg.floor_dim = [4 4 0.05]` è metà della mesh.** Il cubo del pavimento è
+8 × 8 × 0.1 m, misurato dal bounding box. Da `floor_dim` discendono
+`floor_off` e `floor_top`.
+
+Oggi `floor_top = 0` è comunque giusto, ma **per compensazione**: il blocco del
+pavimento ha l'offset scritto a mano `[0,0,0.05]` invece di `floor_off`, e i
+due errori si annullano.
+
+> ⚠️ **Non correggere `floor_dim` da solo.** Raddoppiare `floor_dim(3)` senza
+> toccare il resto sposta il pavimento di 25 mm e rompe la campagna. Vanno
+> rifatti insieme: `floor_dim` vero, `floor_off` coerente, e l'offset del
+> blocco che usa `floor_off` invece di un numero. Con una run di verifica.
+
+**Le mesh del terreno non erano tracciate** fino al 16/9, e i blocchi
+puntavano a `C:\Users\eros2\OneDrive\Desktop\…`: percorsi assoluti sul PC di
+un solo membro del gruppo. Quel modello non era eseguibile da nessun altro, e
+i video li ha girati chi aveva quei file.
+
+**`script_T6.m` non era in git** quando sono state prodotte le run T6
+archiviate del 21/9 sera: è entrato in `3e13f29`. Quel riferimento non è
+ricostruibile esattamente dal repo. Il commit va fatto **prima** di lanciare
+una campagna, non dopo.
+
+### Conseguenze per le conclusioni già scritte
+
+Nessuna sezione viene ritirata, e la riserva che temevamo — «forse stiamo
+misurando un C2 rotto» — **è rimossa**: C2 è quello giusto, e lo scarto
+rispetto ai video è interamente spiegato dalle inerzie.
+
+Quindi la scelta di C3 può essere fatta sui dati della campagna, senza il
+sospetto di star correggendo un difetto nostro invece di un limite del
+controllore cinematico. Era la domanda da cui questa indagine è partita.
+
+Resta aperta, come prima, la taratura di `cfg.c2.soglia_tau = [0.04 0.1 0.1]`,
+mai validata contro i falsi positivi e negativi del flag di contatto. È una
+cosa diversa dai cinque parametri della ricerca, ed è aperta dal 23/9.
+
+### Errori di metodo di questa indagine, per non ripeterli
+
+- **«gli ostacoli sono 25 mm più alti oggi»**: scritto come misura, era
+  un'inferenza da due parametri. Falso: l'altezza relativa non è cambiata.
+- **«3.5 cm contro i 4.3–6.2 riportati da T6»**: avevo misurato **un** ostacolo
+  su sette e generalizzato. Gli ostacoli sono di tre altezze diverse.
+- **«`alt_ost` usa `cfg.floor_top`, quindi è contaminata»**: falso, `alt_ost`
+  è la mediana delle quote dei piedi fermi e non usa `floor_top`.
+
+### Come rifare le prove
+
+**Estrarre una versione vecchia senza toccare il repo:**
+
+```bash
+git archive --format=zip -o /c/fp15settembre.zip 1cb101d
+```
+
+Estrarre in `C:\fp15settembre`. Poi da MATLAB, ripuntando le mesh (i percorsi
+originali sono su un altro PC):
+
+```matlab
+bdclose all;  restoredefaultpath
+cd 'C:\fp15settembre';  clear all;  startup_phantomx
+open_system('phantomx_sim_zero')
+
+props = 'G:\Il mio Drive\FSR\Final_project\simscape\props';
+b = find_system('phantomx_sim_zero','SearchDepth',1,'MaskType','File Solid');
+for k = 1:numel(b)
+    [~, n, e] = fileparts(get_param(b{k},'ExtGeomFileName'));
+    set_param(b{k}, 'ExtGeomFileName', fullfile(props, [n e]));
+end
+```
+
+poi Run. **Non salvare il modello.**
+
+**Estrarre il codice che vive nel `.slx`:** `estrai_funzioni('<modello>','<etichetta>')`
+scrive un file per blocco `MATLAB Function` in `estratti/<etichetta>/`, e da lì
+due versioni si confrontano con `visdiff`. È l'unico modo di fare un diff su
+logica che sta dentro un file binario.
+
+> **Nota di metodo.** `git checkout` e `git worktree` su questo repo falliscono
+> a metà: sta dentro Google Drive, che sfila i file mentre git li scrive, e si
+> resta con l'albero di lavoro svuotato — recuperabile, ma spaventa, e serve
+> `bdclose all` in MATLAB prima di ogni operazione. `git archive` scrive un solo
+> zip fuori da Drive e non tocca il repo. Finché il progetto resta lì, è l'unico
+> modo affidabile di guardare una versione vecchia.
+
+---
+
+## 11. [25/9] Dal 22 al 25 settembre C2 non ha cercato il terreno
+
+> **Perché questa sezione esiste.** L'indagine della §10 aveva chiuso il *cosa*
+> — i video del 15/9 erano migliori per le inerzie — ma non il *perché*. Questa
+> sezione chiude il perché, e la risposta è che il difetto era **nostro**: una
+> correzione applicata a metà. Le righe C2 di ogni tabella prodotta dopo il 22/9
+> non descrivono C2.
+
+### 11.1 La regola del flag, letta nel modello
+
+Il repo la descriveva in due modi incompatibili, e non potevano essere entrambi
+giusti:
+
+| dove | cosa diceva |
+|---|---|
+| `phantomx_config` | `cont = OR( \|τ_mis − τ_att\| > soglia )` |
+| `abilita_log`, `README` | `cont = OR( \|τ\| > soglia )` |
+
+Risalendo nel `.slx` il collegamento del `Constant c2_soglia` (funzione
+`vs_regola` in `valida_soglia.m`, sola lettura):
+
+```
+Inverse Dynamics → Reshape → Subtract [+ −] → Abs → Demux → Mux → Relational Operator
+                                    ↑                                      ↑
+                              tau_misurata                            c2_soglia
+```
+
+sei `Relational Operator`, uno per zampa. **Vince `phantomx_config`**: è la
+differenza. `abilita_log` e `README` sono stati corretti.
+
+`τ_attesa` esce da `phantomx_sim_zero/Inverse Dynamics`, un `MATLABSystem`
+(`robotics.slmanip.internal.block.InverseDynamicsBlock`) la cui maschera ha il
+parametro `RigidBodyTree = robotModel`. E `robotModel` nasce in
+`Setup_robot_object.m` da `importrobot` **sull'URDF**, cioè con le inerzie
+sbagliate di mille volte.
+
+### 11.2 Il meccanismo
+
+`applica_inerzie` corregge i 25 `Solid` **di Simscape** (`MomentsOfInertia`).
+Il `rigidBodyTree` non lo tocca. Quindi dal 22/9:
+
+| | inerzie |
+|---|---|
+| il robot che cammina | corrette |
+| il modello che prevede la coppia | URDF, ~1000× |
+
+`|τ_mis − τ_att|` diventa dominato dall'errore di modello, con o senza contatto,
+e il flag resta acceso. Con il flag incollato a 1, in `ricerca_terreno` non si
+entra mai nel ramo `c(i) == 0`, che è **l'unico** che fa crescere `z_ext` e
+l'unico che azzera `z_ext` e `z_hold`: il comando degenera in
+`min(z, z_hold(t_reset))`, una costante. Niente lo segnala — il robot cammina e
+le metriche escono.
+
+### 11.3 La misura
+
+`valida_soglia.m`: una sola run T2 C2 da 10 s. Nel log ci sono insieme
+`torque_sens`, `torque_estim` e `Fleg`, quindi il flag si ricalcola offline per
+qualunque soglia e si confronta con la forza normale al piede, che è la verità.
+Tre configurazioni, stessa misura, soglia `[0.04 0.1 0.1]`:
+
+| | robot corretto, stimatore URDF **(campagna 22–25/9)** | entrambi URDF *(fino al 22/9)* | entrambi corretti *(dal 25/9)* |
+|---|---|---|---|
+| errore in appoggio | 7.0% | 0.9% | **0.6%** |
+| errore di un flag **sempre acceso** | 7.0% | 8.7% | 3.2% |
+| il flag è meglio della costante? | **no, identico** | sì | sì |
+| flag acceso in volo | 95.1% | 8.3% | 41.9% |
+| voli senza reset di `z_ext` | **20 / 60** | 1 / 60 | 2 / 60 |
+| appoggi non rilevati | 0 / 79 | 0 / 86 | 0 / 67 |
+
+La colonna di sinistra è la diagnosi: un flag binario che vale sempre 1 sbaglia
+esattamente quanto la frazione di appoggio senza forza, e non porta
+informazione.
+
+> **Nota metodologica, costata due errori.** La prima versione di
+> `valida_soglia` misurava l'errore **solo in fase di appoggio** e dichiarava la
+> soglia «validata» al 97.6% di accordo. Quella maschera escludeva proprio i
+> campioni in cui il flag sbaglia. E il criterio di separazione confrontava
+> l'errore con zero invece che con quello di un predittore costante, che su una
+> classe sbilanciata è la sola soglia di riferimento sensata. Entrambi corretti.
+
+### 11.4 La correzione
+
+`allinea_stimatore.m` riscrive massa e inerzia dei corpi di `robotModel` con gli
+stessi `cfg.I_*` di `applica_inerzie` e forza la maschera a rivalutare, **in
+memoria**, senza `save_system`. Fa tre verifiche in sequenza — scrittura
+sull'oggetto, ripiego su `replaceBody`, e rilettura del *mask workspace* — e si
+ferma con errore se una non passa: un fallimento silenzioso qui rimetterebbe in
+piedi esattamente il problema che sta chiudendo.
+
+Va chiamata **sempre subito dopo `applica_inerzie`**. È in
+`script_T2/T3/T4/T4D/T5/T6/T7`, `spazzata_soglia` e `valida_soglia`.
+
+### 11.5 La soglia, ritarata
+
+Con lo stimatore allineato il flag funziona, ma con `[0.04 0.1 0.1]` si accende
+sul 41.9% della fase di volo — e per il **39.7%** è colpa della sola **coxa**:
+la sua distribuzione di `|Δτ|` ha p90 in volo `0.0421` contro p10 a terra
+`0.0469`. Ha senso fisico: la coxa ruota attorno all'asse verticale e il
+contatto è verticale, quindi le trasmette pochissima coppia, mentre in volo
+porta tutta l'accelerazione laterale della zampa.
+
+`soglia_ottima.m` (ottimo per giunto, poi discesa per coordinate sull'OR vero,
+sui dati di una run già fatta) ha scelto `[0.385 0.136 0.105]`: sulla coxa
+**sopra la sua stessa mediana in appoggio**, cioè spegnerla. Il contatto lo
+rilevano femore e tibia. **Non è una ritaratura, è un cambio di regola**: il
+flag diventa un OR su due giunti.
+
+Decisa su T6, perché su terreno piano le due terne sono equivalenti
+(`prova_soglia_T6.m`, metriche su finestra comune fino a x = 3.043 m):
+
+| | `[0.04 0.1 0.1]` | `[0.385 0.136 0.105]` |
+|---|---|---|
+| esce dalla zona ostacoli | **mai** (t = 30 s = fine run) | **t = 21.55 s** |
+| `roll_max` | 0.160 | **0.122** |
+| `roll_rms` | 0.0580 | **0.0286** |
+| `dev_lat_max` | 0.539 | **0.281** |
+| `yaw_err_fin` | −0.546 | **+0.098** |
+| `cot` | 2.085 | **1.330** |
+| energia | 100.2 J | **63.2 J** |
+| `tau_max` | **6.86 N·m** | 8.38 N·m |
+| ritardo mediano del flag (T2) | **−220 ms** | **−10 ms** |
+
+L'ultima riga è quella che spiega tutte le altre: con la terna del modello il
+flag si alza 220 ms **prima** del contatto e congela la zampa in aria. Su un
+pavimento non si vede, su sette ostacoli costa metà del rollio e un terzo
+dell'energia.
+
+Adottata `[0.385 0.136 0.105]`, a tre cifre perché l'ottimo viene da una run
+sola. **Va dichiarato in relazione che questo parametro l'abbiamo tarato noi**,
+con il criterio e la misura qui sopra: non è più il valore del modello di
+partenza.
+
+### 11.6 Un errore di definizione del task, trovato per strada
+
+`script_T6` non troncava la run al bordo del pavimento, mentre `script_T4D` lo
+fa da giorni. Il pavimento è il cubo 8 × 8, quindi `x ∈ [−4, 4]`; `t6_dur = 30 s`
+a velocità nominale sono ~3.6 m e i piedi arrivano 15–20 cm davanti al corpo.
+Nella run con la terna nuova:
+
+```
+esce dagli ostacoli   t = 21.55 s,  x = 2.709 m
+piede oltre il bordo  t = 28.85 s,  x = 3.696 m
+rollio > 30°          t = 29.64 s,  x = 3.907 m      ← 0.79 s DOPO
+x massima             3.958 m                         ← il pavimento finisce a 3.95
+```
+
+`metriche` leggeva quella caduta come `causa_fallimento = "ribaltamento"` e
+`superato` diventava `false`: **l'unica delle due run che aveva completato il
+percorso risultava l'unica ad aver fallito**. Aggiunto `t6_taglia_bordo`, con la
+colonna `t_bordo` nella riga.
+
+Resta aperta una scelta di progetto del task: T6 è **al limite del pavimento per
+costruzione**, e qualunque controllore più veloce ci finisce sopra. O si accorcia
+`t6_dur`, o si allarga il pavimento. Va deciso prima di misurare C3, che se
+funziona sarà più veloce.
+
+### 11.7 Conseguenze
+
+| | |
+|---|---|
+| righe **C1** | **valide.** Verificato: rifatta T2 C1 dopo l'allineamento, CSV identico byte per byte (`git diff` vuoto). In C1 `par(1) = 0`, il flag non è nel percorso del comando |
+| righe **C2** | **da rifare tutte**, su ogni task |
+| `results/diagnostica/spazzata_soglia.csv` (23/9) | prodotta con lo stimatore disallineato: da rifare o da marcare come non valida |
+| righe **T7** | C1 valide, C2 da rifare |
+| la §10 | resta valida: la causa prossima erano le inerzie. Questa sezione ne dà il meccanismo |
+
+### 11.8 Cose aperte che questa indagine ha scoperto e non ha chiuso
+
+1. **Il filtro da 50 ms.** L'`InitFcn` del modello, prima di chiamare
+   `init_gait`, costruisce `sys_filter`: 18 filtri del primo ordine in
+   parallelo, polo a −20 rad/s, costante di tempo **50 ms**, sovrascrivibile
+   con `tau_filtro`. Ingressi `Action_In_1..18`, uscite
+   `Filtered_Action_Out_1..18`. **Nessun documento del progetto lo menziona.**
+   Se è sul percorso della coppia misurata aggiunge 50 ms di ritardo al
+   confronto mentre `τ_att` è calcolata su `q`, `q̇`, `q̈` istantanei: in volo,
+   dove la zampa accelera, produce una differenza sistematica senza nessun
+   contatto. È il primo candidato a spiegare l'8% di flag acceso in volo che
+   resta anche dopo l'allineamento. Si verifica cambiando `tau_filtro` e
+   rifacendo `valida_soglia`.
+2. **`contact_sched` concorda col contatto reale solo al 67%** su T6 con la
+   terna vecchia. Lo schema dell'andatura si scolla dal contatto su terreno
+   accidentato: va tenuto presente per ogni metrica che lo usa come maschera.
+3. **I sensori di forza chiudono al 41–65% del peso su T6**: vedono solo il
+   pavimento, non i piedi sugli ostacoli. Tutte le colonne di contatto di T6
+   sono `NaN` per costruzione. Preesistente.
+4. **`taratura_T2.m` e `script_T4_limite.m`** non chiamano `applica_inerzie` né
+   `allinea_stimatore`. Aggiungerle cambierebbe i risultati di quegli script,
+   quindi la decisione è rimandata: non è una correzione neutra.
+5. **`salva_grafico.m`** è stato modificato a mano durante l'indagine del 15/9 e
+   scrive in `grafici/inerzie_og/`. Da rimettere a posto.
+6. **La terna è stata decisa su T6 solo.** T5 e T4D non sono stati rifatti con
+   quella nuova. Se una delle due peggiora molto, la scelta va ridiscussa.

@@ -82,6 +82,13 @@ t5_ctrl      = t5_nome_ctrl(t5_c2);
 applica_terreno('T5', false, t5_mdl);
 % [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
 applica_inerzie(t5_mdl);
+% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
+% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
+% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
+% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
+% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
+% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+allinea_stimatore(t5_mdl);
 
 fprintf('\nT5: controllore %s, ostacolo singolo, %g s a velocita'' nominale\n', ...
         t5_ctrl, t5_dur);

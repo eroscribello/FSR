@@ -40,11 +40,11 @@ end
 tag = regexprep(char(tag), '[^\w\-\.]', '_');     % niente caratteri buoni per i nomi file
 if ~isfolder('grafici'), mkdir('grafici'); end
 
-percorso = fullfile('grafici/inerzie_og', [tag '.fig']);
+percorso = fullfile('grafici', [tag '.fig']);
 set(fig, 'Name', tag, 'NumberTitle', 'off');      % cosi' la finestra dice cos'e'
 savefig(fig, percorso);
 
-png = fullfile('grafici/inerzie_og', [tag '.png']);
+png = fullfile('grafici', [tag '.png']);
 try
     exportgraphics(fig, png, 'Resolution', 200);  % R2020a in poi
 catch
