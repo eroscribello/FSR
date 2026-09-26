@@ -1517,17 +1517,21 @@ funziona sarà più veloce.
 
 ### 11.8 Cose aperte che questa indagine ha scoperto e non ha chiuso
 
-1. **Il filtro da 50 ms.** L'`InitFcn` del modello, prima di chiamare
-   `init_gait`, costruisce `sys_filter`: 18 filtri del primo ordine in
-   parallelo, polo a −20 rad/s, costante di tempo **50 ms**, sovrascrivibile
-   con `tau_filtro`. Ingressi `Action_In_1..18`, uscite
-   `Filtered_Action_Out_1..18`. **Nessun documento del progetto lo menziona.**
-   Se è sul percorso della coppia misurata aggiunge 50 ms di ritardo al
-   confronto mentre `τ_att` è calcolata su `q`, `q̇`, `q̈` istantanei: in volo,
-   dove la zampa accelera, produce una differenza sistematica senza nessun
-   contatto. È il primo candidato a spiegare l'8% di flag acceso in volo che
-   resta anche dopo l'allineamento. Si verifica cambiando `tau_filtro` e
-   rifacendo `valida_soglia`.
+1. ~~**Il filtro da 50 ms.**~~ **[RITIRATO 26/9]** Avevo scritto che
+   l'`InitFcn` costruisce 18 filtri del primo ordine da 50 ms, che nessun
+   documento del progetto lo menzionava, e che era il primo candidato a
+   spiegare l'8% di flag acceso in volo rimasto dopo l'allineamento.
+   **Sbagliato due volte.** Era documentato — `archivio/README.md`, indagine
+   sul fallimento a 2× — e soprattutto quel filtro è **inerte**:
+   `trova_filtri.m` ha censito 2085 blocchi, commentati e con coefficienti
+   scritti a numero compresi, e nessuno legge `sys_filter`; `prova_filtri.m`
+   ha spazzato cinque valori di `tau` ottenendo run identiche bit per bit.
+   L'`InitFcn` lo costruisce, lo stampa, e il modello lo ignora.
+   Conseguenza: **l'8% di flag acceso in volo resta senza spiegazione**, e il
+   candidato va cercato altrove — verosimilmente nell'accuratezza residua
+   dello stimatore durante il volo, dove la zampa accelera e il modello
+   inverso sbaglia di più.
+
 2. **`contact_sched` concorda col contatto reale solo al 67%** su T6 con la
    terna vecchia. Lo schema dell'andatura si scolla dal contatto su terreno
    accidentato: va tenuto presente per ogni metrica che lo usa come maschera.

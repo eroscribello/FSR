@@ -123,13 +123,104 @@ T5, l'ostacolo deve poggiare.
 - `taratura_T2.m` resta attivo: va rilanciato se cambia la geometria delle
   zampe o il terreno.
 - `limite_velocita.m` resta attivo per la stessa ragione.
-- `abilita_log.m`, `verifica_log.m`, `cerca_log.m` sono chiusi come indagine
-  (le forze di contatto non sono ottenibili dal modello, e `adatta_simscape`
-  le ricostruisce dalla penetrazione) ma il nome `abilita_log` compare in
-  **messaggi a runtime** di `adatta_simscape`, `curva_imbardata`,
-  `diagnosi_imbardata` e `origine_beccheggio`, che invitano a lanciarlo.
-  Quei messaggi sono ormai fuorvianti - mandano a uno strumento che non puo'
-  funzionare, perche' Simulink rifiuta `LogSimulationData` sui blocchi di
-  contatto. Vanno corretti, e solo dopo questi tre file si possono spostare
-  qui: archiviarli prima lascerebbe quattro suggerimenti che puntano a una
-  cartella fuori path.
+- ~~`abilita_log.m`, `verifica_log.m`, `cerca_log.m` sono chiusi come
+  indagine~~ **[AGGIORNATO 26/9] Non lo sono piu': `abilita_log` e' tornato
+  uno strumento attivo.** `valida_soglia.m` lo chiama per accendere `Fleg` e
+  avere la forza normale al piede, che e' la VERITA' contro cui si misura il
+  flag di contatto di C2. Senza, quella validazione non si puo' fare. Restano
+  in root tutti e tre (`abilita_log` chiama `cerca_log`, `verifica_log`
+  controlla che l'accensione abbia attecchito).
+  Resta vero che le forze non sono ottenibili in tutte le condizioni: su T6 i
+  sensori chiudono al 41-65% del peso, vedono il pavimento e non i piedi
+  sugli ostacoli. E' un limite del modello, non dello strumento.
+
+---
+
+## [26/9] Il secondo giro di archiviazione
+
+Ventitre' file, tutti verificati orfani con un grafo delle chiamate costruito
+su root, `common/`, `simscape/` e `metriche/`, escludendo le occorrenze nei
+commenti. Sei gruppi.
+
+### Indagine S0 e coppie statiche
+`prova_S0` `s0_vuoto` `prova_coppie` `posa_iniziale` `controlla_copia`
+`corpi_degeneri` `ispeziona_giunti` `tau_misurato` `tau_statico`
+`crea_modello_mpc`
+
+Servivano a far stare in piedi il robot a coppie costanti sulla copia del
+modello con i giunti attuati in coppia, primo passo verso l'MPC.
+
+Esito: **S0 e' un equilibrio instabile e il test e' stato ritirato**, non
+riparato (`docs/piano_mpc_simscape.md` §3b, marcata `[RITIRATO 24/9]`). A
+coppie di giunto fisse la forza al piede e' `f = -(J')^-1 tau`, e `J` dipende
+dalla configurazione: se il corpo sale la zampa si estende, il braccio si
+accorcia, la spinta cresce e il corpo sale ancora. Diverge in entrambe le
+direzioni, e lo smorzamento combatte la velocita', non il segno del guadagno.
+
+Le tre cose che S0 doveva verificare sono state verificate meglio altrove, e
+quei risultati restano validi: `prova_coppie` ha confermato il percorso
+`Constant -> convertitori -> giunti` con rapporto **1.000 su tutti e 18** i
+giunti - ed e' il motivo per cui oggi sappiamo che un `tau = -J'f` arriverebbe
+davvero ai giunti, se si scrivesse un C3 in coppia; `tau_misurato` ha letto le
+coppie statiche vere da `torque_sens`; `posa_iniziale` ha mostrato che base e
+copia partono dalla stessa posa, sei piedi a terra a 2.788 N.
+
+### Indagine sulle inerzie
+`prova_inerzie` `controllo_inerzie`
+
+Hanno misurato l'effetto della correzione delle inerzie URDF su T2 e T6, C1 e
+C2. Esito e numeri in `docs/piano_confronto.md` §9, insieme alle due prove che
+quelle dell'URDF sono sbagliate: raggio di girazione di 1.79 m per un corpo da
+25 cm, e ventiquattro link con inerzia identica.
+
+La correzione vive in `applica_inerzie.m`, che resta attivo. `sistema_results`
+nomina `prova_inerzie*.csv`, cioe' i CSV, non lo script.
+
+### Geometria, terreno, verifiche una tantum
+`confronta_terreno` `complanarita` `analizza_forze` `catena_gamba`
+`misura_quota` `verifica_marcia`
+
+Risposte gia' registrate: catalogo del terreno e pose degli ostacoli
+(`confronta_terreno`, usato nell'indagine del 15 settembre), complanarita' dei
+piedi, catena cinematica della gamba, quota d'appoggio, marcia nominale.
+`complanarita` chiama `analizza_forze`, che infatti viene con lui.
+
+### Modifiche strutturali al `.slx`
+`setup_modello` `setup_terreno_param`
+
+Gia' applicate. **`setup_modello` e' l'unico script del progetto che fa
+`save_system`**, ed e' la ragione principale per cui sta qui: tutto il resto
+lavora in memoria per principio - `applica_terreno`, `applica_inerzie`,
+`allinea_stimatore` - e un file che salva il modello del collega non deve
+stare nella cartella dove si lanciano le campagne.
+
+### Imbardata e beccheggio
+`curva_imbardata` `origine_beccheggio`
+
+Indagini chiuse. Quello che serve alla campagna T3 e' rimasto in root:
+`script_T3` chiama `diagnosi_imbardata` e `tasso_imbardata`.
+
+### Scratch
+`Graph_generator`
+
+Cinque righe di `plot` del collega, senza intestazione: disegna `c_lf` e
+`z_lf`, cioe' il flag di contatto e la profondita' comandata della zampa
+anteriore sinistra. Non si cancella perche' non e' nostro.
+
+---
+
+## [26/9] Una nota che vale piu' di un file: `sys_filter` e' inerte
+
+E' gia' scritto sopra, nella sezione sull'indagine del fallimento a 2x, ma va
+ripetuto perche' ci sono ricascato il 25/9. L'`InitFcn` del modello costruisce
+diciotto filtri del primo ordine con costante di tempo 50 ms e li stampa a
+ogni apertura. Chi li vede per la prima volta pensa a un ritardo nascosto
+nella catena delle coppie - ed e' un'ipotesi che sembra ottima, perche'
+spiegherebbe un flag di contatto che scatta in anticipo.
+
+**Non lo e'.** `trova_filtri.m` ha censito 2085 blocchi, compresi i commentati
+e quelli con i coefficienti scritti a numero: nessuno legge `sys_filter`.
+`prova_filtri.m` ha spazzato cinque valori di `tau` ottenendo run identiche
+bit per bit. E' un residuo.
+
+Prima di dedicargli mezza giornata, leggere qui.

@@ -68,3 +68,8 @@ risultati.csv
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# generato da estrai_funzioni: codice estratto dal .slx, non e' codice del progetto
+estratti/
+# il testo del messaggio vive in git log dopo il commit
+commit_msg_*.txt

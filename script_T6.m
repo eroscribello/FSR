@@ -19,8 +19,11 @@
 t6_cfg       = phantomx_config();
 t6_mdl       = 'phantomx_sim_zero';
 t6_c2        = true;       % false = C1, anello aperto. true = C2.
-t6_dur       = 30;          % [s] a 1.0x sono ~4 m: la disposizione dei sette
-                            %     ostacoli non e' nota, meglio abbondare
+t6_dur       = 25;          % [s] ABBONDANTE di proposito: la run non finisce
+                            %     allo scadere del tempo ma a cfg.terreno.T6_x_fine,
+                            %     vedi il taglio piu' sotto. 25 s a 0.134 m/s
+                            %     portano il corpo a ~3.5 m, oltre l'ultimo
+                            %     ostacolo (~3.3 m).
 t6_soglia_su = 0.015;       % [m] appoggio piu' alto del piano = sull'ostacolo
 t6_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
                             %       (lo swing va a ~0.24 m/s di media)
@@ -73,8 +76,33 @@ if ~isnan(t6_t_bordo)
                 '  dal bordo, non il comportamento del controllore.\n'], t6_t_bordo);
 end
 
+%% ---- taglio alla x comune: e' qui che finisce il task ----
+% [26/9] Il taglio al bordo (sopra) e' una RETE DI SICUREZZA contro la caduta
+% dal pavimento. Questo invece definisce il task: tutte le run di T6 coprono
+% lo stesso tratto di pista, quindi incontrano gli stessi ostacoli, quindi
+% alt_ost, appoggi_su_ost e l'assetto confrontano controllori e non percorsi.
+% Vedi cfg.terreno.T6_x_fine per il perche'.
+t6_xfine = t6_cfg.terreno.T6_x_fine;
+t6_kf = find(t6_run.p(:,1) >= t6_xfine, 1, 'first');
+t6_arrivato = ~isempty(t6_kf);
+t6_t_a_fine = NaN;
+if t6_arrivato
+    t6_t_a_fine = t6_run.t(t6_kf);
+    t6_run = t6_taglia_bordo_k(t6_run, t6_kf);
+    fprintf('\n  Arrivato a x = %.2f m in %.2f s: run tagliata li''.\n', ...
+            t6_xfine, t6_t_a_fine);
+else
+    fprintf(2, ['\n  NON arriva a x = %.2f m entro la fine della run: si ferma a\n' ...
+                '  %.2f m. Le metriche coprono meno pista delle altre righe e NON\n' ...
+                '  sono confrontabili con loro. Leggere arrivato = false.\n'], ...
+            t6_xfine, max(t6_run.p(:,1)));
+end
+
 t6_riga = metriche(t6_run, t6_cfg, struct('t_regime', 2*t6_cfg.T));
-t6_riga.t_bordo = t6_t_bordo;
+t6_riga.t_bordo   = t6_t_bordo;
+t6_riga.x_fine    = t6_xfine;
+t6_riga.arrivato  = t6_arrivato;
+t6_riga.t_a_fine  = t6_t_a_fine;
 
 %% ---- il passaggio ----
 t6_P = t6_passaggio(t6_run, t6_soglia_su, t6_v_appoggio, t6_cfg, 2*t6_cfg.T);
@@ -256,6 +284,22 @@ end
 
 function s = t6_si(b)
 if b, s = 'si'; else, s = 'NO'; end
+end
+
+function r = t6_taglia_bordo_k(r, k)
+%T6_TAGLIA_BORDO_K  Tronca la run al campione k.
+%   La lunghezza di riferimento si prende PRIMA del ciclo: troncando t per
+%   primo, un confronto fatto dentro il ciclo userebbe gia' il valore nuovo e
+%   lascerebbe gli altri campi interi (errore fatto il 26/9 in asimmetria_T6).
+N = numel(r.t);
+if isempty(k) || k >= N || k < 2, return; end
+f = fieldnames(r);
+for i = 1:numel(f)
+    v = r.(f{i});
+    if (isnumeric(v) || islogical(v)) && size(v,1) == N && N > 1
+        r.(f{i}) = v(1:k, :);
+    end
+end
 end
 
 function [r, t_bordo] = t6_taglia_bordo(r, x_bordo)

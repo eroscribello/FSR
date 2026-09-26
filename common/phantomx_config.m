@@ -370,6 +370,33 @@ cfg.terreno.task.T4 = [];         % rampa (rampa_x_inizio, rampa_gradi)
 cfg.terreno.task.T4D = [];        % dosso: salita, cima, discesa (terreno.dosso)
 cfg.terreno.task.T5 = 1;          % ostacolo singolo
 cfg.terreno.task.T6 = 1:7;        % ostacoli multipli
+
+% [26/9] TUTTE LE RUN DI T6 FINISCONO ALLA STESSA x, NON ALLO STESSO TEMPO.
+%   Con una durata fissa un controllore piu' veloce percorre piu' strada, e
+%   siccome gli ostacoli di T6 stanno a x fisse, incontra ostacoli diversi:
+%   alt_ost, appoggi_su_ost e l'assetto finiscono per confrontare percorsi
+%   diversi invece che controllori. E' successo il 25/9 fra due terne di
+%   soglia (3.09 m contro 3.97 m) e succedera' di nuovo con C3, che se
+%   funziona sara' piu' veloce.
+%   Tagliando a una x comune ogni riga copre LO STESSO TRATTO DI PISTA, e
+%   "chi e' piu' veloce" diventa una colonna esplicita (t_a_fine) invece di
+%   un effetto collaterale che sporca tutte le altre.
+%   3.40 m: l'ultimo ostacolo e' a ~3.3 m, il bordo del pavimento a 3.95 m e
+%   i piedi precedono il corpo di ~25 cm, quindi restano ~30 cm di margine.
+%   [DISATTIVATO 26/9] Inf = nessun taglio, le run di T6 restano intere.
+%   Il motivo: su T6 la differenza fra i controllori e' GROSSOLANA - C1 si
+%   ferma a 2.44 m e non raggiunge gli ostacoli finali, C2 arriva a 3.71 m.
+%   1.3 metri sono 13-45 volte il rumore misurato su distanza (0.03-0.10 m):
+%   per dirlo non serve una finestra comune. E con x_fine = 3.40 C1 non ci
+%   arriva nemmeno, quindi il taglio produceva solo un avviso e una riga
+%   incomparabile.
+%   RESTA PERO' VERO che roll, pitch, cot e tau su T6 dipendono dal percorso
+%   e NON vanno citati: quei confronti li danno T5 e T4D, che hanno il loro
+%   pavimento di rumore. Da T6 si prendono distanza, frazione_task e
+%   arrivato, che sono robusti al percorso.
+%   Per riattivarlo basta rimettere un valore finito: la macchina del taglio
+%   e' in script_T6 ed e' documentata li'.
+cfg.terreno.T6_x_fine = Inf;      % [m] Inf = run intera
 cfg.terreno.task.T7 = [];         % piano, disturbo impulsivo
 
 %% ===== attuatori =====

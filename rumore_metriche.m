@@ -53,16 +53,47 @@ rm_mdl = 'phantomx_sim_zero';
 rm_dz  = [0, +0.2e-3, -0.2e-3];        % [m] perturbazione su gait.z0
 
 % {task, controllore, durata [s], cella della campagna da confrontare}
-rm_tag   = 'T2';
+%
+% [25/9] RIMISURA DOPO L'ALLINEAMENTO DELLO STIMATORE
+%   Il pavimento misurato il 23/9 (results/diagnostica/rumore_metriche.csv) e'
+%   stato preso su un C2 che NON cercava il terreno: il flag di contatto era
+%   incollato a 1 e il comando degenerava in una costante (vedi
+%   allinea_stimatore e docs/piano_confronto.md sezione 11). La sensibilita'
+%   di quel controllore non dice niente su quella di questo, quindi quel file
+%   non e' un metro valido per le righe nuove - ne' per dichiarare le
+%   differenze, ne' per escluderle.
+%
+%   PREVISIONE, SCRITTA PRIMA DI LANCIARE: il C2 riparato dovrebbe essere
+%   MENO sensibile a z0 di quello rotto, perche' assorbire un errore di quota
+%   di 0.2 mm e' esattamente il mestiere della ricerca del terreno. Se invece
+%   risulta piu' sensibile, e' una cattiva notizia su C2 e va detta.
+%
+%   Il file vecchio NON viene sovrascritto: resta come documento dello stato
+%   precedente. Questa rimisura scrive rumore_ostacoli.csv.
+%
+%   La configurazione precedente, sul piano, era:
+%     rm_tag = 'T2';  rm_prove = {'T2','C1',10*rm_cfg.T,'v1.00x'
+%                                 'T2','C2',10*rm_cfg.T,'v1.00x'};
+%   [26/9] SECONDO GIRO: piano e curva. Su T5 e T4D il rumore e' gia'
+%   misurato (rumore_ostacoli.csv, 12 run). T2 e T3 non hanno un metro, e
+%   senza metro i loro numeri non si possono dichiarare ne' escludere.
+rm_tag   = 'piano';
 rm_prove = {'T2', 'C1', 10*rm_cfg.T, 'v1.00x'
-            'T2', 'C2', 10*rm_cfg.T, 'v1.00x'};
+            'T2', 'C2', 10*rm_cfg.T, 'v1.00x'
+            'T3', 'C1', 15,          'yaw+0.100'
+            'T3', 'C2', 15,          'yaw+0.100'};
 
 rm_xbordo = 4 - 0.05;                  % serve solo a T4D
 rm_out_f  = fullfile('results','diagnostica', sprintf('rumore_%s.csv', rm_tag));
 
+% [CORRETTO 25/9] Era un error. Ma applica_terreno, applica_inerzie e
+% allinea_stimatore lavorano con set_param in memoria: dopo la prima chiamata
+% il modello E' dirty per costruzione, e la guardia fermava sul nascere una
+% sessione lanciata e lasciata sola. Lo stato viene comunque reimpostato qui
+% sotto in modo esplicito, e questo script non salva mai il .slx.
 if bdIsLoaded(rm_mdl) && strcmp(get_param(rm_mdl,'Dirty'),'on')
-    error('rumore_metriche:dirty', ['Il modello e'' aperto con modifiche non ' ...
-        'salvate: salvale o chiudilo (bdclose all) prima.']);
+    fprintf(2, ['\n  Il modello ha modifiche in memoria (normale). Terreno,\n' ...
+                '  inerzie e stimatore vengono reimpostati. Nessun salvataggio.\n']);
 end
 if ~isfolder(fullfile('results','diagnostica')), mkdir(fullfile('results','diagnostica')); end
 
@@ -77,23 +108,39 @@ try
         rm_dur  = rm_prove{rm_i,3};
 
         if ~strcmp(rm_terreno_ora, rm_t)
+            applica_imbardata(0);        % si esce sempre puliti dal task precedente
             applica_terreno(rm_t, false, rm_mdl);
             applica_inerzie(rm_mdl);
+            allinea_stimatore(rm_mdl);   % [25/9] sempre insieme: vedi sezione 11
             rm_terreno_ora = rm_t;
+        end
+
+        % [26/9] T3 NON E' SOLO UN TERRENO. La curva si realizza ruotando la
+        % direzione del passo di ciascuna zampa (applica_imbardata), e il
+        % passo S cambia di conseguenza. Senza queste due righe le run
+        % "T3" sarebbero rettilinei su terreno piano, cioe' un altro task -
+        % e il rumore misurato non sarebbe quello di T3.
+        rm_yaw  = 0;
+        rm_S    = [];
+        if strcmp(rm_t, 'T3')
+            rm_yaw  = rm_cfg.yaw_d;
+            rm_info = applica_imbardata(rm_yaw);
+            rm_S    = rm_info.S;
         end
 
         for rm_j = 1:numel(rm_dz)
             fprintf('\n---- %s, %s, z0 %+.1f mm ----\n', rm_t, rm_ctrl, 1e3*rm_dz(rm_j));
 
             OVERRIDE_C2   = strcmp(rm_ctrl,'C2');                  %#ok<NASGU>
-            OVERRIDE_GAIT = struct('z0', rm_cfg.z0 + rm_dz(rm_j)); %#ok<NASGU>
+            OVERRIDE_GAIT = struct('z0', rm_cfg.z0 + rm_dz(rm_j));
+            if ~isempty(rm_S), OVERRIDE_GAIT.S = rm_S; end         %#ok<NASGU>
             clear OVERRIDE_C2_SOGLIA                               % soglia di campagna
             init_gait
 
             rm_run = adatta_simscape(sim(rm_mdl, 'StopTime', num2str(rm_dur)), ...
                          struct('controller', rm_ctrl, 'task', rm_t, 'run', 1, ...
                                 'condizione', sprintf('z0%+.1fmm', 1e3*rm_dz(rm_j)), ...
-                                'vel_d', [rm_cfg.v_nom 0]));
+                                'vel_d', [rm_cfg.v_nom 0], 'yaw_d', rm_yaw));
 
             if strcmp(rm_t,'T4D'), rm_run = rm_taglia(rm_run, rm_xbordo); end
 
@@ -103,9 +150,11 @@ try
             writetable(RM, rm_out_f);       % dopo ogni run: Ctrl+C non cancella nulla
         end
     end
+    applica_imbardata(0);
     clear OVERRIDE_C2 OVERRIDE_GAIT
     init_gait
 catch rm_err
+    try, applica_imbardata(0); end %#ok<TRYNC>
     clear OVERRIDE_C2 OVERRIDE_GAIT
     fprintf(2,'\n  Errore: modello NON salvato. Le run gia'' fatte sono in %s\n', rm_out_f);
     rethrow(rm_err);
@@ -184,3 +233,11 @@ if ~isempty(cella) && ismember('condizione', T.Properties.VariableNames)
     if any(sel), T = T(sel, :); end
 end
 end
+
+fprintf('\n\n===================== FINITO =====================\n');
+fprintf('  %d run in %.0f minuti\n', height(RM), toc(rm_crono)/60);
+fprintf('  scritto  %s\n', rm_out_f);
+fprintf('  Nessun CSV di campagna toccato, modello non salvato.\n');
+fprintf('  Le righe di campagna T2 e T3 sono gia'' quelle con lo stimatore\n');
+fprintf('  allineato, quindi i rapporti qui sopra sono leggibili subito.\n');
+fprintf('==================================================\n\n');
