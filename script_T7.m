@@ -97,14 +97,18 @@
 %
 % USO
 %   clear all; bdclose all; startup_phantomx
-%   script_T7                      % C1 (t7_c2 = false)
-%   poi si mette t7_c2 = true e si rilancia
+%   script_T7                      % con t7_ctrl = 'C1'
+%   poi si mette t7_ctrl = 'C2' (o 'C3') e si rilancia
 %
 % Progetto FSR PhantomX - A. Russo
 
 t7_cfg  = phantomx_config();
-t7_mdl  = 'phantomx_sim_zero';
-t7_c2   = true;      % false = C1, anello aperto. true = C2.
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t7_ctrl = 'C2';      % 'C1' | 'C2' | 'C3'
 t7_dur  = 12;         % [s]
 t7_t0   = 4;          % [s] la spinta arriva a marcia regolare (transitorio 2 s)
 t7_larg = 0.05;       % [s] larghezza dell'impulso
@@ -114,7 +118,18 @@ t7_dv   = [0 0.01 1 2 4 8 16];       % moltiplicatori di v_nom; il primo e' il
 assert(t7_dv(1) == 0, 'script_T7:riferimento', ...
     'La prima ampiezza deve essere 0: e'' la run di riferimento, non un punto.');
 
-t7_ctrl = t7_nome_ctrl(t7_c2);
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t7_ctrl = OVERRIDE_CTRL;
+    fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t7_ctrl);
+end
+[t7_mdl, t7_c2] = scegli_controllore(t7_ctrl);
 t7_J    = t7_cfg.mass * t7_dv * t7_cfg.v_nom;     % [N*s]
 
 fprintf('\nT7: controllore %s, spinta laterale a t = %.1f s, %d run\n', ...
@@ -336,10 +351,6 @@ legend('Location','northwest')
 salva_grafico(sprintf('T7_%s', t7_ctrl));
 
 %% ================= helper =================
-function s = t7_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
-end
-
 function s = t7_esito(r)
 if r.dv_su_vnom == 0,      s = 'RIFERIMENTO';
 elseif r.caduto,           s = 'CADUTO';

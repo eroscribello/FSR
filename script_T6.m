@@ -17,8 +17,12 @@
 % Progetto FSR PhantomX - A. Russo
 
 t6_cfg       = phantomx_config();
-t6_mdl       = 'phantomx_sim_zero';
-t6_c2        = true;       % false = C1, anello aperto. true = C2.
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t6_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
 t6_dur       = 25;          % [s] ABBONDANTE di proposito: la run non finisce
                             %     allo scadere del tempo ma a cfg.terreno.T6_x_fine,
                             %     vedi il taglio piu' sotto. 25 s a 0.134 m/s
@@ -27,7 +31,18 @@ t6_dur       = 25;          % [s] ABBONDANTE di proposito: la run non finisce
 t6_soglia_su = 0.015;       % [m] appoggio piu' alto del piano = sull'ostacolo
 t6_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
                             %       (lo swing va a ~0.24 m/s di media)
-t6_ctrl      = t6_nome_ctrl(t6_c2);
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t6_ctrl = OVERRIDE_CTRL;
+    fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t6_ctrl);
+end
+[t6_mdl, t6_c2] = scegli_controllore(t6_ctrl);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T6', false, t6_mdl);
@@ -276,10 +291,6 @@ h = patch([P.t_ini P.t_fin P.t_fin P.t_ini], [yl(1) yl(1) yl(2) yl(2)], ...
           [0.85 0.85 0.85], 'EdgeColor','none', 'HandleVisibility','off');
 uistack(h, 'bottom');
 ylim(yl);
-end
-
-function s = t6_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
 end
 
 function s = t6_si(b)

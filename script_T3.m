@@ -37,10 +37,26 @@
 %   stampa solo le colonne che hanno senso.
 
 t3_cfg  = phantomx_config();
-t3_mdl  = 'phantomx_sim_zero';
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t3_ctrl  = 'C2';      % 'C1' | 'C2' | 'C3'
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t3_ctrl = OVERRIDE_CTRL;
+    fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t3_ctrl);
+end
+[t3_mdl, t3_c2] = scegli_controllore(t3_ctrl);
 t3_yaw  = t3_cfg.yaw_d;            % [rad/s] comando nominale
 t3_dur  = 15;                      % [s]
-t3_c2   = true;                   % false = C1, anello aperto. true = C2.
 T3 = table();
 t3_runs = {};
 t3_etichette = {};
@@ -57,7 +73,7 @@ applica_inerzie(t3_mdl);
 % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
 allinea_stimatore(t3_mdl);
 
-fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_nome_ctrl(t3_c2));
+fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_ctrl);
 
 %% ================= 0. verifica del segno =================
 fprintf('\n===== T3: verifica del segno dell''imbardata =====\n');
@@ -69,7 +85,7 @@ init_gait
 
 t3_out = sim(t3_mdl, 'StopTime', num2str(t3_dur));
 t3_run = adatta_simscape(t3_out, struct( ...
-             'controller', t3_nome_ctrl(t3_c2), 'task','T3', 'run',1, ...
+             'controller', t3_ctrl, 'task','T3', 'run',1, ...
              'condizione', sprintf('yaw%+.3f', t3_yaw), ...
              'vel_d', [t3_info.S/t3_cfg.T_stance 0], ...
              'yaw_d', t3_yaw));
@@ -163,7 +179,7 @@ init_gait
 
 t3_out_m = sim(t3_mdl, 'StopTime', num2str(t3_dur));
 t3_run_m = adatta_simscape(t3_out_m, struct( ...
-               'controller', t3_nome_ctrl(t3_c2), 'task','T3', 'run',1, ...
+               'controller', t3_ctrl, 'task','T3', 'run',1, ...
                'condizione', sprintf('yaw%+.3f', -t3_yaw), ...
                'vel_d', [t3_info_m.S/t3_cfg.T_stance 0], ...
                'yaw_d', -t3_yaw));
@@ -191,7 +207,7 @@ init_gait
 % Il nome contiene il controllore: 'T3_risultati.csv' era lo stesso file per
 % C1 e C2, quindi la seconda campagna cancellava la prima in silenzio.
 if ~isfolder('results'), mkdir('results'); end
-t3_file = fullfile('results', sprintf('T3_%s.csv', t3_nome_ctrl(t3_c2)));
+t3_file = fullfile('results', sprintf('T3_%s.csv', t3_ctrl));
 writetable(T3, t3_file);
 fprintf('\nscritto  %s\n', t3_file);
 
@@ -223,7 +239,7 @@ for t3_j = 1:numel(t3_runs)
 end
 legend(t3_etichette, 'Location','best');
 xlabel('x [m]'); ylabel('y [m]'); title('T3 - traiettoria del CoM nel piano')
-salva_grafico(sprintf('T3_%s', t3_nome_ctrl(t3_c2)));   % grafici/<tag>.fig, testi modificabili dopo
+salva_grafico(sprintf('T3_%s', t3_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
 
 %% ================= helper =================
 function wz = t3_wz(r)
@@ -232,10 +248,6 @@ wz = [];
 if isfield(r,'w') && ~isempty(r.w) && size(r.w,2) >= 3
     wz = r.w(:,3);
 end
-end
-
-function s = t3_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
 end
 
 function riga = t3_riga_arco(r, cfg, yaw_cmd, yaw_mis, info)

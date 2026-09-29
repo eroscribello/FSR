@@ -70,13 +70,28 @@
 % Progetto FSR PhantomX - A. Russo
 
 t5_cfg       = phantomx_config();
-t5_mdl       = 'phantomx_sim_zero';
-t5_c2        = true;       % false = C1, anello aperto. true = C2.
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t5_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
 t5_dur       = 20;          % [s] a 1.0x sono ~2.8 m: abbondante per superarlo
 t5_soglia_su = 0.015;       % [m] appoggio piu' alto del piano = sull'ostacolo
 t5_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
                             %       (lo swing va a ~0.24 m/s di media)
-t5_ctrl      = t5_nome_ctrl(t5_c2);
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t5_ctrl = OVERRIDE_CTRL;
+    fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t5_ctrl);
+end
+[t5_mdl, t5_c2] = scegli_controllore(t5_ctrl);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T5', false, t5_mdl);
@@ -279,10 +294,6 @@ h = patch([P.t_ini P.t_fin P.t_fin P.t_ini], [yl(1) yl(1) yl(2) yl(2)], ...
           [0.85 0.85 0.85], 'EdgeColor','none', 'HandleVisibility','off');
 uistack(h, 'bottom');
 ylim(yl);
-end
-
-function s = t5_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
 end
 
 function s = t5_si(b)

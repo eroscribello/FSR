@@ -76,20 +76,49 @@
 % Progetto FSR PhantomX - A. Russo
 
 t4_cfg        = phantomx_config();
-t4_mdl        = 'phantomx_sim_zero';
-t4_c2         = true;      % false = C1, anello aperto. true = C2.
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t4_ctrl       = 'C2';      % 'C1' | 'C2' | 'C3'
 t4_dur        = 20;         % [s] ~4.5 s in piano, il resto in salita
 t4_soglia_su  = 0.015;      % [m] appoggio piu' alto del piano = sulla rampa
 t4_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
 t4_gradi      = t4_cfg.terreno.rampa_gradi;
 t4_grafico    = true;
+t4_forzato    = '';        % chi ha scavalcato t4_ctrl, per dirlo a schermo
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+% Qui OVERRIDE_T4 ha l'ultima parola: e' mirata a questo task, OVERRIDE_CTRL
+% no. Cosi' script_T4_limite non viene dirottato da una variabile globale
+% dimenticata nel workspace.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t4_ctrl = OVERRIDE_CTRL;  t4_forzato = 'OVERRIDE_CTRL';
+end
 if exist('OVERRIDE_T4','var')
-    if isfield(OVERRIDE_T4,'c2'),      t4_c2      = OVERRIDE_T4.c2;      end
+    % [29/9] Interfaccia vecchia, booleana: la usa ancora script_T4_limite.
+    % Copre solo C1 e C2; per C3 serve OVERRIDE_T4.ctrl, che ha la precedenza.
+    if isfield(OVERRIDE_T4,'c2')
+        if OVERRIDE_T4.c2, t4_ctrl = 'C2'; else, t4_ctrl = 'C1'; end
+        t4_forzato = 'OVERRIDE_T4.c2';
+    end
+    if isfield(OVERRIDE_T4,'ctrl')
+        t4_ctrl = OVERRIDE_T4.ctrl;  t4_forzato = 'OVERRIDE_T4.ctrl';
+    end
     if isfield(OVERRIDE_T4,'gradi'),   t4_gradi   = OVERRIDE_T4.gradi;   end
     if isfield(OVERRIDE_T4,'grafico'), t4_grafico = OVERRIDE_T4.grafico; end
     clear OVERRIDE_T4                  % lo stato residuo e' gia' costato una campagna
 end
-t4_ctrl       = t4_nome_ctrl(t4_c2);
+if ~isempty(t4_forzato)
+    fprintf(2, '  [%s] controllore forzato a %s\n', t4_forzato, t4_ctrl);
+end
+[t4_mdl, t4_c2] = scegli_controllore(t4_ctrl);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T4', false, t4_mdl, struct('rampa_gradi', t4_gradi));
@@ -351,10 +380,6 @@ h2 = patch([R.w_rampa(1) R.w_rampa(2) R.w_rampa(2) R.w_rampa(1)], [yl(1) yl(1) y
            [0.82 0.82 0.82], 'EdgeColor','none', 'HandleVisibility','off');
 uistack([h1 h2], 'bottom');
 ylim(yl);
-end
-
-function s = t4_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
 end
 
 function s = t4_si(b)

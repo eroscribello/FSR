@@ -29,10 +29,26 @@
 %   terreno, non il controllore.
 
 t2_cfg    = phantomx_config();
-t2_mdl    = 'phantomx_sim_zero';
+% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
+% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
+% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
+% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
+% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+t2_ctrl    = 'C2';      % 'C1' | 'C2' | 'C3'
+% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
+% aprire i file:
+%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
+% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
+% di ogni task, che e' il problema che risolve. In cambio ogni run che la
+% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
+% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
+    t2_ctrl = OVERRIDE_CTRL;
+    fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t2_ctrl);
+end
+[t2_mdl, t2_c2] = scegli_controllore(t2_ctrl);
 t2_fatt   = t2_cfg.t2_fattori;
 t2_nCicli = 10;
-t2_c2     = true;          % false = C1, anello aperto. true = C2.
 T2 = table();
 t2_runs  = cell(1, numel(t2_fatt));
 t2_etichette = cell(1, numel(t2_fatt));
@@ -91,7 +107,7 @@ for t2_i = 1:numel(t2_fatt)
     t2_out = sim(t2_mdl, 'StopTime', num2str(t2_stop));
 
     t2_run = adatta_simscape(t2_out, struct( ...
-                 'controller', t2_nome_ctrl(t2_c2), 'task','T2', 'run',1, ...
+                 'controller', t2_ctrl, 'task','T2', 'run',1, ...
                  'condizione', t2_etich, ...
                  'vel_d', [t2_vnom 0]));
 
@@ -118,7 +134,7 @@ clear OVERRIDE_GAIT OVERRIDE_C2
 init_gait                                                      % ripristina i valori di cfg
 
 % IL NOME DEL FILE DEVE CONTENERE IL CONTROLLORE.
-% Era cablato a 'T2_C1.csv': lanciare lo script con t2_c2 = true sovrascriveva
+% Era cablato a 'T2_C1.csv': lanciare lo script sul controllore C2 sovrascriveva
 % la campagna C1 con dati C2, senza dire niente e senza modo di accorgersene
 % dopo. Un CSV con l'etichetta sbagliata nel nome e' peggio di nessun CSV.
 % I CSV di campagna vanno in results/, non nella radice: sono il risultato e
@@ -126,7 +142,7 @@ init_gait                                                      % ripristina i va
 % gia'. Da quando .gitignore ignora results/ per ESTENSIONE e non per
 % cartella, i .csv la' dentro sono tracciati e i .mat no.
 if ~isfolder('results'), mkdir('results'); end
-t2_file = fullfile('results', sprintf('T2_%s.csv', t2_nome_ctrl(t2_c2)));
+t2_file = fullfile('results', sprintf('T2_%s.csv', t2_ctrl));
 writetable(T2, t2_file);
 fprintf('\nscritto  %s\n\n', t2_file);
 
@@ -157,10 +173,6 @@ for t2_j = 1:numel(t2_runs)
 end
 legend(t2_etichette, 'Location','best');
 xlabel('cicli di andatura'); ylabel('v_x [m/s]')
-title(sprintf('T2 - curva di velocita'', %s su Simscape', t2_nome_ctrl(t2_c2)))
-salva_grafico(sprintf('T2_%s', t2_nome_ctrl(t2_c2)));   % grafici/<tag>.fig, testi modificabili dopo
+title(sprintf('T2 - curva di velocita'', %s su Simscape', t2_ctrl))
+salva_grafico(sprintf('T2_%s', t2_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
 
-%% ================= helper =================
-function s = t2_nome_ctrl(c2)
-if c2, s = 'C2'; else, s = 'C1'; end
-end

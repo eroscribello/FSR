@@ -78,6 +78,63 @@ traccia nel codice. È successo: una batteria di misure d'imbardata è stata
 presa su un robot con mezzo piede a terra e 4° di beccheggio, e buttata. Se il
 prompt è `K>>`, MATLAB è fermo in debug: prima `dbquit`.
 
+Dal 29/9 gli script dei task leggono anche **`OVERRIDE_CTRL`**, che a differenza
+delle altre **non si autocancella**: vedi sotto.
+
+### Scegliere il controllore
+
+Ogni `script_T*.m` ha in testa **una riga**, e da lì discendono modello,
+interruttore della ricerca del terreno e nome del file dei risultati:
+
+```matlab
+t5_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
+[t5_mdl, t5_c2] = scegli_controllore(t5_ctrl);
+```
+
+`scegli_controllore.m` è **l'unico posto dove sta scritto chi gira su cosa**:
+
+| nome | modello | `OVERRIDE_C2` | cos'è |
+|---|---|---|---|
+| `C1` | `phantomx_sim_zero` | `false` | cinematico ad anello aperto, tripode |
+| `C2` | `phantomx_sim_zero` | `true` | C1 + ricerca del terreno (Arrigoni 2024) |
+| `C3` | `phantomx_sim_attitude` | `true` | C2 + retroazione di beccheggio, **in serie** |
+
+Aggiungere un controllore significa aggiungere una riga a quella tabella, e
+nient'altro. Un nome sconosciuto è un errore immediato, non un CSV con
+l'etichetta sbagliata.
+
+> **[29/9] Perché non è più un booleano.** Era `t5_c2 = true/false`, e il nome
+> del file usciva da un secondo posto. Con due controllori funzionava; con tre
+> non falliva con un errore, falliva **sovrascrivendo `results/T5_C2.csv` con
+> una run di C3**. Passare un booleano a `scegli_controllore` ora è un errore
+> esplicito, apposta: uno script non convertito deve rompersi, non funzionare
+> a metà.
+
+`C3` tiene la ricerca del terreno (`OVERRIDE_C2 = true`) perché l'assetto sta
+**in serie, dopo** di essa — verificato leggendo l'XML dentro il `.slx`:
+`ricerca_terreno → z_* → Sum (+ d_z_*) → Saturation → Rate Limiter → gamba`.
+Così ogni controllore aggiunge **un solo meccanismo** al precedente e ogni
+confronto fra due adiacenti ne misura uno solo.
+
+**Per una campagna su più task** senza aprire i file:
+
+```matlab
+clear all; bdclose all; startup_phantomx
+OVERRIDE_CTRL = 'C3';
+script_T2; script_T3; script_T5; script_T6
+clear OVERRIDE_CTRL
+```
+
+`OVERRIDE_CTRL` **non viene cancellata dagli script**: se lo facesse andrebbe
+riscritta prima di ogni task, che è il problema che risolve. In cambio ogni run
+che la usa lo dichiara a schermo in rosso. In `script_T4`, `OVERRIDE_T4` ha
+l'ultima parola — è mirata a quel task — così `script_T4_limite` non viene
+dirottato da una globale dimenticata nel workspace.
+
+**Prima di misurare C3**, `verifica_attitude` controlla che il modello regga la
+catena di misura (log di Simscape, To Workspace, solidi, stimatore, `c2_par`,
+`InitFcn`). Solo letture, nessun `save_system`.
+
 ### T2 — curva di velocità
 
 ```matlab
@@ -296,9 +353,11 @@ Utility nella radice:
 
 | gruppo | file |
 |---|---|
+| controllori | `scegli_controllore` (nome → modello + `OVERRIDE_C2`), `allinea_stimatore`, `verifica_attitude` |
 | terreno | `applica_terreno`, `quota_terreno`, `mappa_contatti` |
 | metriche | `adatta_simscape`, `metriche`, `complanarita`, `verifica_marcia`, `verifica_ik` |
 | modello | `setup_modello`, `setup_terreno_param`, `audit_mesh`, `fix_mesh_paths`, `trova_nel_modello` |
+| diagnostica | `valida_soglia`, `soglia_ottima`, `fattibilita`, `estrai_funzioni` |
 | varie | `pulizia`, `pulizia2` |
 
 ---
@@ -315,6 +374,26 @@ Utility nella radice:
 
 Entrambi leggono **`common/phantomx_config.m`**. È l'unico posto dove si modificano
 masse, geometria, tempi dell'andatura, attrito e limiti degli attuatori.
+
+### I modelli Simscape
+
+Un simulatore, più `.slx` in `simscape/`. Non si scelgono a mano: li dà
+`scegli_controllore`.
+
+| file | a cosa serve |
+|---|---|
+| `phantomx_sim_zero.slx` | l'impianto di riferimento, C1 e C2 |
+| `phantomx_sim_attitude.slx` | C3: lo stesso impianto più la retroazione di beccheggio |
+| `phantomx_sim_mpc.slx` | ponte verso l'MPC, non usato nella campagna |
+
+Gli altri `.slx` della cartella sono varianti di lavoro e backup datati.
+
+> **[29/9]** `phantomx_sim_zero` è arrivato una volta sul remoto con sei blocchi
+> `From` (`d_z_*`) **senza i `Goto` corrispondenti**, residuo della costruzione
+> del modello d'assetto: non compilava. Un `.slx` è binario e un diff non lo
+> mostra, ma è uno zip e l'XML dentro si legge. Se un modello smette di
+> compilare dopo un `pull`, `git log -- simscape/<file>.slx` e
+> `git checkout <sha> -- simscape/<file>.slx` sono la via più corta.
 
 ---
 
@@ -370,8 +449,9 @@ task, calendario — è in **`docs/piano_confronto.md`**.
 | | controllore | stato |
 |---|---|---|
 | **C1** | NUKE feed-forward (baseline del paper) | funzionante |
-| **C2** | Arrigoni closed-loop: rilevazione contatto da coppia | implementato nel modello |
-| **C3** | MPC convesso | funzionante sul simulatore ridotto |
+| **C2** | Arrigoni closed-loop: rilevazione contatto da coppia | campagna completa |
+| **C3** | C2 + retroazione di beccheggio (`phantomx_sim_attitude`) | implementato, **campagna assente** |
+| ~~C3~~ | ~~MPC convesso~~ | gira sul simulatore ridotto, **fuori dal confronto** per scelta: modello a corpo singolo, sarebbe un confronto fra due impianti |
 
 L'interruttore fra C1 e C2 non richiede blocchi aggiuntivi: la retroazione blocca la
 zampa quando `|tau_misurata − tau_attesa|` supera una soglia su almeno uno dei tre
@@ -406,6 +486,24 @@ di far partire la campagna di misura:
 
 Aperti sul banco di prova:
 
+- **C3 non ha righe di campagna.** Il controllore esiste e funziona, ma non è
+  passato per i sette task con lo stesso protocollo. Tre cose da sistemare prima:
+  - il **carico** ("il pacco": `Brick Solid`, `Brick Solid1`, `6-DOF Joint1`,
+    `Spatial Contact Force`) è **attivo** nel modello d'assetto. Una campagna
+    lanciata così misura C3 carico contro C1 e C2 scarichi;
+  - le posizioni delle zampe in `calcola_delta_z` sono **scritte a mano**, non
+    prese da `cfg` — il commento nel codice lo dice. Se non sono quelle vere, il
+    guadagno efficace dell'anello è sbagliato di un fattore, e l'anello funziona
+    lo stesso;
+  - il regolatore è un **proporzionale puro** (`P = 30`, `I = 0`, `D = 0`)
+    nonostante il commento parli di PI: resta un errore di beccheggio a regime,
+    proprio nel caso — la rampa — in cui serve.
+- **T6 esaurisce il pavimento** (8 × 8 m). Gestito troncando le run al bordo, ma
+  un controllore più veloce esce dal mondo: o si allarga il pavimento o si
+  accorcia la run, **prima** di misurare C3.
+- **`rumore_metriche` non passa da `scegli_controllore`**: si costruisce le run e
+  fa `OVERRIDE_C2 = strcmp(rm_ctrl,'C2')`. Per il pavimento di rumore di C3 va
+  passato anche il modello.
 - **Geometria della rampa (T4)**: da ridimensionare e riposizionare, non da ricablare.
 - **~~Filtri `sys_filter`~~ — CHIUSO.** `sys_filter` esiste, ha 18 stati e i suoi poli
   seguono `tau` alla cifra, ma **nessuno dei 2085 blocchi del modello lo legge**:
