@@ -9,7 +9,7 @@ Robotics 2024, 13, 142.
 |---|---|
 | **C1** | cinematico ad anello aperto, andatura a tripode, giunti in posizione |
 | **C2** | C1 + **ricerca del terreno**: il piede scende finché la coppia non segnala il contatto |
-| **C3** | C2 + retroazione sull'assetto del corpo (beccheggio, e dal 1/10 anche rollio) |
+| **C3** | C2 + retroazione sull'assetto del corpo: **beccheggio e rollio** (il rollio dall'1/10) |
 
 Due persone: **Andrea** (misure, diagnostica, documentazione) e un **collega**
 (il modello d'assetto, `phantomx_sim_attitude.slx`). Il `.slx` è suo.
@@ -104,6 +104,52 @@ e si leggono direttamente da lì.
 
 ---
 
+## C3, com'è fatto davvero
+
+Verificato leggendo l'XML dentro il `.slx` (è uno zip), non dalla documentazione.
+
+```
+ricerca_terreno -> z_*  ->  Sum (+ d_z_*)  ->  Saturation  ->  Rate Limiter  ->  gamba
+```
+
+L'assetto sta **in serie, dopo** la ricerca del terreno: legge la quota già
+corretta e ci somma un termine. Per questo `scegli_controllore` dà a C3
+`OVERRIDE_C2 = true`: C3 *contiene* C2, e ogni controllore aggiunge un solo
+meccanismo al precedente.
+
+```matlab
+delta_z = x_i * u_theta + y_i * u_phi;      % MATLAB Function4, calcola_delta_z
+```
+
+| | valore | note |
+|---|---|---|
+| PID beccheggio | **P = 10, I = 1, D = 0** | discreto a 1 ms, riferimento 0. Era P = 30, I = 0 fino al 30/9 |
+| PID rollio | **P = 5, I = 0.5, D = 0** | aggiunto l'1/10 |
+| `Saturation` | `LowerLimit = 0.07` | upper al default |
+| `Rate Limiter` | ±0.3 m/s | |
+
+**Con P = 30 e I = 0 l'anello faceva vibrare i piedi**: andatura visivamente
+corretta, ma contatti frammentati sotto i 0.125 s, nessun appoggio riconosciuto
+e `script_T4` che si fermava con un errore di indice. Diagnosticato con
+`diagnosi_appoggio`, risolto abbassando il guadagno. Se ricompare un
+comportamento del genere, il primo sospetto è lì.
+
+**`x_i` e `y_i` non sono una misura geometrica.** Sono una matrice di
+distribuzione dell'uscita sui sei piedi, scritta a mano. I segni e l'ordine
+sono giusti (sequenza `lf, lm, lr, rr, rm, rf`, verificata contro i `Goto
+d_z_*`), ma i moduli stanno **~1.8× sotto** i valori veri di `cfg.pf_nom`
+(x ±0.224 contro ±0.12, y ±0.161/±0.243 contro ±0.10/±0.14). Il fattore di
+scala è **assorbito in `P`**, che è stato tarato sperimentalmente con questi
+numeri dentro: l'anello funziona. Correggerli moltiplicherebbe il guadagno per
+1.8 e richiederebbe di ritarare. Resta un errore del 7% nel rapporto fra zampe
+centrali e d'angolo sul rollio.
+
+**Il carico** ("il pacco": `Brick Solid`, `Brick Solid1`, `6-DOF Joint1`,
+`Spatial Contact Force`) sta nel modello d'assetto. Va commentato prima di
+qualunque campagna, altrimenti si misura C3 carico contro C1 e C2 scarichi.
+
+---
+
 ## Cosa NON si può misurare — i limiti del banco
 
 Questa sezione evita di "scoprire" risultati che sono artefatti. **Leggerla
@@ -140,6 +186,7 @@ prima di interpretare qualunque numero.**
 | | |
 |---|---|
 | **`applica_inerzie` e `allinea_stimatore` vanno sempre in coppia** | le inerzie dell'URDF sono ~1000× troppo grandi; correggerle solo sul robot e non sul `rigidBodyTree` dello stimatore rende `\|τ_mis − τ_att\|` grande ovunque, il flag di contatto resta incollato a 1 e **C2 smette di cercare il terreno**. È successo dal 22 al 25 settembre senza che nulla lo segnalasse |
+| **I due modelli non hanno le stesse inerzie SU DISCO** | dal 30/9 `phantomx_sim_attitude` è stato salvato con le inerzie **già corrette** (`applica_inerzie` riporta 25/25 già corretti), mentre `phantomx_sim_zero` tiene ancora quelle dell'URDF e viene corretto a ogni run (0/25). Non cambia i risultati — `applica_inerzie` è idempotente — ma uno script che **dimentica** di chiamarla ottiene inerzie giuste su C3 e sbagliate su C1/C2, e non si vede. `taratura_T2.m` e `script_T4_limite.m` sono già in quella condizione |
 | **Il `.slx` è binario ma è uno zip** | `unzip` e si legge l'XML: `simulink/systems/*.xml` per i blocchi e i collegamenti, `simulink/stateflow/chart_*.xml` per il codice delle MATLAB Function. È così che si è trovato un modello arrivato dal remoto con sei `From` senza `Goto`, che non compilava |
 | **`estrai_funzioni.m`** | estrae il codice delle MATLAB Function in file di testo, per diffare due versioni del modello |
 | **Chiudere i modelli in Simulink prima di `git pull`/`rebase`** | git riscrive il file sotto i piedi di MATLAB; se poi si risponde "salva" si sovrascrive la versione appena arrivata |
@@ -176,6 +223,8 @@ prima di interpretare qualunque numero.**
    controllare con `diagnosi_appoggio` prima di modificare codice. Resta da
    mettere la **guardia** in `t4_salita`: con meno di tre piedi in appoggio
    deve dire che il robot non cammina, non dare un errore di indice.
+   *(Il guadagno è stato abbassato l'1/10 e il tremolio è sparito: la verifica
+   serve a confermarlo, non c'è detto che ci sia codice da cambiare.)*
 3. **Campagna C3** sui sette task.
 4. **Pavimento di rumore per C3**, quattro task × 3 run. Senza, nessuna
    differenza C2–C3 è dichiarabile. `rumore_metriche` non passa da

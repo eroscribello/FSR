@@ -78,7 +78,11 @@ fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_ctrl);
 %% ================= 0. verifica del segno =================
 fprintf('\n===== T3: verifica del segno dell''imbardata =====\n');
 
-t3_info = applica_imbardata(t3_yaw);
+% [CORRETTO 1/10] Il modello va passato a OGNI chiamata. Senza, applica_imbardata
+% ricade sul suo default phantomx_sim_zero: con C3 l'imbardata finiva sul
+% modello di C1/C2 e il robot di C3 andava dritto (misurata +0.0005 rad/s su
+% +0.1). Con C1 e C2 non si vedeva, perche' girano proprio su quel modello.
+t3_info = applica_imbardata(t3_yaw, [], t3_mdl);
 OVERRIDE_C2   = t3_c2;                                         %#ok<NASGU>
 OVERRIDE_GAIT = struct('S', t3_info.S);                        %#ok<NASGU>
 init_gait
@@ -120,7 +124,7 @@ t3_rapp = t3_yaw_mis / t3_yaw;
 % e' questa riga: e' partire da una sessione pulita (vedi README) e la cella
 % simmetrica qui sotto, che deve dare lo specchio della prima.
 if abs(t3_rapp) < 0.05
-    applica_imbardata(0);
+    applica_imbardata(0, [], t3_mdl);
     clear OVERRIDE_GAIT OVERRIDE_C2
     init_gait
     error('script_T3:autorita', ...
@@ -137,7 +141,7 @@ if abs(t3_rapp) < 0.05
          t3_yaw_mis, t3_yaw, 100*t3_rapp);
 
 elseif sign(t3_yaw_mis) ~= sign(t3_yaw)
-    applica_imbardata(0);
+    applica_imbardata(0, [], t3_mdl);
     clear OVERRIDE_GAIT OVERRIDE_C2
     init_gait
     error('script_T3:segno', ...
@@ -172,7 +176,7 @@ t3_etichette{end+1} = sprintf('%+.3f rad/s', t3_yaw);
 % va trovata prima di mettere T3 in relazione.
 fprintf('\n===== T3: cella simmetrica =====\n');
 
-t3_info_m = applica_imbardata(-t3_yaw);
+t3_info_m = applica_imbardata(-t3_yaw, [], t3_mdl);
 OVERRIDE_C2   = t3_c2;                                         %#ok<NASGU>
 OVERRIDE_GAIT = struct('S', t3_info_m.S);                      %#ok<NASGU>
 init_gait
@@ -199,7 +203,7 @@ if t3_asimm > 0.15
 end
 
 %% ================= ripristino =================
-applica_imbardata(0);
+applica_imbardata(0, [], t3_mdl);
 clear OVERRIDE_GAIT OVERRIDE_C2
 init_gait
 
