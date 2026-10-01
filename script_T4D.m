@@ -99,6 +99,9 @@ applica_inerzie(t4d_mdl);
 % incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
 % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
 allinea_stimatore(t4d_mdl);
+% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
+% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
+if strcmp(t4d_mdl, 'phantomx_sim_attitude'), commenta_carico(t4d_mdl); end
 t4d_G = dosso_profilo(t4d_cfg.terreno.dosso, t4d_cfg.floor_top);
 
 fprintf(['\nT4D: controllore %s, dosso %g/%g gradi, H %.0f mm, cima %.2f m, ' ...

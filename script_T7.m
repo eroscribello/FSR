@@ -153,6 +153,9 @@ for t7_i = 1:numel(t7_J)
     % incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
     % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
     allinea_stimatore(t7_mdl);
+    % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
+    % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
+    if strcmp(t7_mdl, 'phantomx_sim_attitude'), commenta_carico(t7_mdl); end
     applica_disturbo(t7_mdl, t7_J(t7_i), 'applica', ...
                      struct('t0', t7_t0, 'durata', t7_larg, 'asse', 'y'));
 

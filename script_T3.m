@@ -72,6 +72,9 @@ applica_inerzie(t3_mdl);
 % incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
 % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
 allinea_stimatore(t3_mdl);
+% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
+% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
+if strcmp(t3_mdl, 'phantomx_sim_attitude'), commenta_carico(t3_mdl); end
 
 fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_ctrl);
 

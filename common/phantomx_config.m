@@ -400,8 +400,21 @@ cfg.terreno.T6_x_fine = Inf;      % [m] Inf = run intera
 cfg.terreno.task.T7 = [];         % piano, disturbo impulsivo
 
 %% ===== attuatori =====
-cfg.tau_max = 1.5;          % [DATASHEET] l'URDF dichiara 2.8: ottimistico
-cfg.qd_max  = 5.6548668;    % [URDF]
+% [VERIFICATO 1/10] FONTE: docs/ROBOTIS_AX-12A_emanual.pdf, pag. 2-3, cioe'
+%   https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/ (consultato 1/10/2026),
+%   lo stesso riferimento [40] di Arrigoni et al. (pag. 4: il PhantomX AX
+%   Mark II monta 18 Dynamixel AX-12A). Fino all'1/10 il valore era scritto
+%   [DATASHEET] senza fonte nel repo: era stato dato a memoria e mai letto.
+%     Stall Torque    1.5 N*m a 12 V, 1.5 A          -> tau_max
+%     No Load Speed   59 rpm a 12 V = 6.18 rad/s     (l'URDF dice 5.65)
+%     Input Voltage   9-12 V, raccomandata 11.1 V    (a 11.1 V lo stallo e' ~1.4)
+%     NOTA ROBOTIS    "Stable motions are possible with robots designed for
+%                     loads with 1/5 or less of the stall torque" -> 0.3 N*m
+%   Lo stallo e' un massimo istantaneo, non un limite di lavoro: il carico
+%   continuo raccomandato e' tau_lavoro.
+cfg.tau_max    = 1.5;       % [DATASHEET] stallo a 12 V. L'URDF dichiara 2.8: ottimistico
+cfg.tau_lavoro = cfg.tau_max/5;   % [DATASHEET] carico per moto stabile, 1/5 dello stallo
+cfg.qd_max  = 5.6548668;    % [URDF] il datasheet da' 6.18 rad/s a 12 V
 cfg.q_min   = -2.6179939;   % [URDF]
 cfg.q_max   =  2.6179939;   % [URDF]
 
