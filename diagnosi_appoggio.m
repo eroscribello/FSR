@@ -134,26 +134,73 @@ else
 end
 fprintf('  -----------------------------------------------------------\n\n');
 
+%% ---- frequenza del disturbo ----
+% [30/9] E' il numero che distingue i meccanismi: il ciclo dell'andatura sta
+% a 1/T, un anello di controllo instabile e il modello di contatto stanno
+% a decine di Hz. Si guarda solo sopra i 2 Hz, altrimenti vince sempre
+% l'andatura.
+%
+% ATTENZIONE: adatta_simscape ricampiona a 200 Hz, quindi sopra i 100 Hz
+% c'e' aliasing. Un picco vicino al limite NON e' una misura: vuol dire che
+% il disturbo vero potrebbe essere piu' veloce e va rilogato piu' fitto.
+fs  = 1/dt;
+sel = t >= t(1) + 0.25*(t(end)-t(1)) & t <= t(1) + 0.75*(t(end)-t(1));
+Ns  = sum(sel);
+w   = 0.5 - 0.5*cos(2*pi*(0:Ns-1)'/(Ns-1));      % Hann a mano: niente toolbox
+f   = (0:floor(Ns/2))' * fs / Ns;
+P   = zeros(numel(f), 6);
+for i = 1:6
+    x = V(sel,i) - mean(V(sel,i));
+    X = fft(x .* w);
+    P(:,i) = abs(X(1:numel(f)));
+end
+banda = f >= 2;
+fb = f(banda);
+[~, kmax] = max(P(banda,:), [], 1);
+f_dom = fb(kmax).';
+
+fprintf('  frequenza dominante sopra 2 Hz (|v| del piede):\n');
+fprintf('   ');
+for i = 1:6, fprintf(' %s %.1f Hz ', nomi{i}, f_dom(i)); end
+fprintf('\n');
+f_med = median(f_dom);
+if f_med > 0.4*fs/2
+    fprintf(['   %.1f Hz mediana, vicino al limite di %.0f Hz del log: il\n' ...
+             '   disturbo potrebbe essere piu'' veloce. Rilogare piu'' fitto\n' ...
+             '   prima di concludere sul meccanismo.\n'], f_med, fs/2);
+else
+    fprintf('   %.1f Hz mediana (limite del log %.0f Hz)\n', f_med, fs/2);
+end
+fprintf('\n');
+
 %% ---- grafico: due cicli al centro della run ----
 tc = t(1) + 0.5*(t(end) - t(1));
 fin = t >= tc - cfg.T & t <= tc + cfg.T;
 
 figure;
-subplot(2,1,1); hold on; grid on
+subplot(3,1,1); hold on; grid on
 plot(t(fin), 1e3*r.pf(fin, 3:3:18));
 ylabel('z piedi [mm]');
 title(sprintf('%s - due cicli al centro della run', da_meta(r)));
 legend(nomi, 'Location','eastoutside');
 
-subplot(2,1,2); hold on; grid on
+subplot(3,1,2); hold on; grid on
 plot(t(fin), V(fin,:));
 yline(v_app, 'k--', 'v_{app}');
 xlabel('t [s]'); ylabel('|v| piede [m/s]');
 legend(nomi, 'Location','eastoutside');
 
+subplot(3,1,3); hold on; grid on
+plot(fb, P(banda,:));
+set(gca, 'XScale', 'log');
+xlabel('f [Hz]'); ylabel('|FFT| di |v|');
+title(sprintf('spettro sopra 2 Hz - limite del log %.0f Hz', fs/2));
+legend(nomi, 'Location','eastoutside');
+
 info = struct('esito', esito, 'v_app', v_app, 'dmin', dmin, ...
               'tratto_max', L, 'frazione_sotto', sotto, ...
-              'v_app_necessaria', serve, 'V', V);
+              'v_app_necessaria', serve, 'V', V, ...
+              'f_dominante', f_dom, 'f_mediana', f_med);
 end
 
 %% ================= helper =================
