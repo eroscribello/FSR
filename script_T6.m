@@ -18,14 +18,16 @@ if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t6_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t6_ctrl);
 end
-[t6_mdl, t6_c2] = scegli_controllore(t6_ctrl);
+[t6_mdl, t6_c2, t6_info] = scegli_controllore(t6_ctrl);
 
 applica_terreno('T6', false, t6_mdl);
 applica_inerzie(t6_mdl);
 allinea_stimatore(t6_mdl);
 % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
 % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t6_mdl, 'phantomx_sim_attitude'), commenta_carico(t6_mdl); end
+if strcmp(t6_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+    if t6_info.carico, commenta_carico(t6_mdl, 'off'); else, commenta_carico(t6_mdl); end
+end
 
 fprintf('\nT6: controllore %s, sette ostacoli, %g s a velocita'' nominale\n', ...
         t6_ctrl, t6_dur);

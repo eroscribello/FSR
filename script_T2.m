@@ -46,7 +46,7 @@ if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t2_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t2_ctrl);
 end
-[t2_mdl, t2_c2] = scegli_controllore(t2_ctrl);
+[t2_mdl, t2_c2, t2_info] = scegli_controllore(t2_ctrl);
 t2_fatt   = t2_cfg.t2_fattori;
 t2_nCicli = 10;
 T2 = table();
@@ -70,7 +70,9 @@ applica_inerzie(t2_mdl);
 allinea_stimatore(t2_mdl);
 % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
 % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t2_mdl, 'phantomx_sim_attitude'), commenta_carico(t2_mdl); end
+if strcmp(t2_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+    if t2_info.carico, commenta_carico(t2_mdl, 'off'); else, commenta_carico(t2_mdl); end
+end
 
 t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);
 if t2_haTar

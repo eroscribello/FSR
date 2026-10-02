@@ -118,7 +118,7 @@ end
 if ~isempty(t4_forzato)
     fprintf(2, '  [%s] controllore forzato a %s\n', t4_forzato, t4_ctrl);
 end
-[t4_mdl, t4_c2] = scegli_controllore(t4_ctrl);
+[t4_mdl, t4_c2, t4_info] = scegli_controllore(t4_ctrl);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T4', false, t4_mdl, struct('rampa_gradi', t4_gradi));
@@ -134,7 +134,9 @@ applica_inerzie(t4_mdl);
 allinea_stimatore(t4_mdl);
 % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
 % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t4_mdl, 'phantomx_sim_attitude'), commenta_carico(t4_mdl); end
+if strcmp(t4_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+    if t4_info.carico, commenta_carico(t4_mdl, 'off'); else, commenta_carico(t4_mdl); end
+end
 
 fprintf('\nT4: controllore %s, rampa di %g gradi, %g s a velocita'' nominale\n', ...
         t4_ctrl, t4_gradi, t4_dur);

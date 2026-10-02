@@ -206,6 +206,78 @@ if isfile(pf)
     L{end+1} = sprintf('*Lettura: %s; i **picchi d''urto** escono dallo stallo, su al massimo il %.2f%% dei campioni.*', mar, 100*smax);
 end
 
+% ---- [2/10] C3 con il pacco attivo (C3P), su T4, T4D, T6 ----
+% Non e' un confronto fra controllori: e' C3 su un robot con 1.1 kg in piu'
+% (+69% della massa). Si mostra accanto a C3 scarico, senza verdetto sul
+% rumore. Costo di trasporto ed energia esclusi: metriche li normalizza con
+% cfg.mass, che non contiene il pacco.
+%
+% CRITERIO, SCRITTO PRIMA DI LANCIARE (2/10). "Portato a termine col pacco":
+%   T4    salito = 1, come nella campagna
+%   T4D   causa_T4D = "dosso attraversato", come nella campagna
+%   T6    in 25 s nessuno dei tre controllori esce dal percorso (superato = 0
+%         per C1, C2 e C3): "a termine" qui vuol dire FARE QUANTO C3 SCARICO,
+%         cioe' nessun ribaltamento, deriva sotto la soglia di validita' e
+%         distanza almeno il 90% di quella di C3
+%   e in tutti e tre il pacco NON e' "al bordo o caduto" (stato_pacco).
+fp = fullfile('results','diagnostica','pacco_C3P.csv');
+if isfile(fullfile('results','T4_C3P.csv')) || isfile(fp)
+    PK = table();
+    if isfile(fp), PK = readtable(fp, 'TextType','string'); end
+    L{end+1} = '';
+    L{end+1} = '## C3 con il pacco (1.1 kg)';
+    L{end+1} = ['*C3P = C3 con il carico del modello attivo: cubo da 1 kg libero su un vassoio da 0.1 kg fissato al corpo, ' ...
+        '+69% della massa del robot. Non è un quarto controllore e non si confronta con C1–C2: si mette accanto a C3 scarico ' ...
+        'per mostrare che porta a termine i task anche carico. Attuatore ideale, come tutta la campagna: la coppia è quanto il ' ...
+        'controllore chiede, non quanto darebbe un AX-12A. Costo di trasporto ed energia esclusi (normalizzati sulla massa senza pacco).*'];
+    L{end+1} = '';
+    L{end+1} = '| task | | C3 | C3P |';
+    L{end+1} = '|---|---|---:|---:|';
+    for tk = {'T4','T4D','T6'}
+        a = tc_riga(tk{1}, 'C3', '');  b = tc_riga(tk{1}, 'C3P', '');
+        if isempty(b), L{end+1} = sprintf('| %s | non ancora misurato | | |', tk{1}); continue; end %#ok<AGROW>
+        righe = {'distanza','distanza [m]',1; 'dev_lat_max','deriva laterale max [m]',1; ...
+                 'pitch_max','beccheggio max [deg]',d; 'roll_max','rollio max [deg]',d; ...
+                 'tau_max','coppia di picco [N m]',1; 'tau_rms_giunto_peggiore','coppia RMS, giunto peggiore [N m]',1};
+        for j = 1:size(righe,1)
+            L{end+1} = sprintf('| %s | %s | %s | %s |', tk{1}, righe{j,2}, ...
+                tc_fmt(tc_valore(a, righe{j,1})*righe{j,3}, righe{j,1}), ...
+                tc_fmt(tc_valore(b, righe{j,1})*righe{j,3}, righe{j,1})); %#ok<AGROW>
+        end
+        pk = '–';  ok_pk = false;
+        if ~isempty(PK)
+            q = PK(PK.task == tk{1}, :);
+            if ~isempty(q)
+                pk = sprintf('%s (%.0f mm)', q.esito(1), 1e3*q.spost_max(1));
+                ok_pk = q.esito(1) ~= "al bordo o caduto";
+            end
+        end
+        L{end+1} = sprintf('| %s | pacco a fine run | – | %s |', tk{1}, pk); %#ok<AGROW>
+        switch tk{1}
+            case 'T4',  ok_t = tc_valore(b, 'salito') == 1;
+            case 'T4D', ok_t = ~isempty(b) && any(strcmp(string(b.causa_T4D(1)), "dosso attraversato"));
+            case 'T6'
+                % una colonna tutta vuota arriva da readtable come NaN, non
+                % come testo: string(NaN) = "NaN" e il "nessun fallimento"
+                % risultava falso. Vuoto, mancante e NaN valgono nessuno.
+                cf = b.causa_fallimento(1);
+                if isnumeric(cf), nessuna = isnan(cf);
+                else, nessuna = ismissing(string(cf)) || strlength(strtrim(string(cf))) == 0;
+                end
+                ok_t = nessuna ...
+                    && tc_valore(b, 'dev_lat_max') < S6.soglia ...
+                    && tc_valore(b, 'distanza') >= 0.9 * tc_valore(a, 'distanza');
+        end
+        if ok_t && ok_pk, v = '**sì**'; else, v = 'no'; end
+        L{end+1} = sprintf('| %s | **portato a termine col pacco** | | %s |', tk{1}, v); %#ok<AGROW>
+    end
+    L{end+1} = '';
+    L{end+1} = sprintf(['*Criterio, scritto prima di lanciare: T4 salita riuscita; T4D dosso attraversato; T6 — dove in 25 s ' ...
+        'nessuno dei tre controllori esce dal percorso, nemmeno C3 scarico — nessun ribaltamento, deriva sotto %.3f m e ' ...
+        'distanza almeno il 90%% di quella di C3. In tutti e tre il pacco non deve essere al bordo o caduto ' ...
+        '(`stato_pacco.m`: spostamento sul vassoio sotto 5 cm, il gioco fra cubo e vassoio).*'], S6.soglia);
+end
+
 fid = fopen(file_md, 'w', 'n', 'UTF-8');
 fprintf(fid, '%s\n', L{:});
 fclose(fid);

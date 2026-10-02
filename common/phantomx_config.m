@@ -124,16 +124,95 @@ cfg.I_thigh = [3.095e-06, 1.014e-05, 1.070e-05];
 cfg.I_tibia = [2.081e-06, 3.004e-05, 3.050e-05];
 
 %% ===== andatura a tripode =====
-cfg.T           = 1.00;
+%
+% DA DOVE VENGONO QUESTI VALORI.  [scritto il 2/10, dopo la domanda al
+% ricevimento. Prima questa sezione era l'unica del file senza provenienza.]
+%
+% IL PAPER NON LI DA'. Arrigoni et al. delegano l'andatura a NUKE e lo
+% dichiarano (p. 6):
+%
+%   "The gait engine employed is not fundamental to describe the desired
+%    formulation and will not be discussed as descriptions are already
+%    available in the literature (the gait engine employed in this treatment
+%    is the one provided by NUKE)."
+%
+% Quindi periodo, duty, passo e sollevamento andavano scelti. Non sono
+% arbitrari: tre su cinque sono fissati da un vincolo misurato, e il grado di
+% liberta' residuo e' UNO SOLO. Il legame e'
+%
+%       T = S / (beta_stance * v_nom)
+%
+% cioe' T non e' una scelta indipendente: discende da S (geometria) e da
+% v_nom (inviluppo di stabilita'). In relazione va presentato cosi'.
+
+% --- phase: NON E' UN PARAMETRO, E' LA DEFINIZIONE ----------------------
+% In ordine CAN (FL FR ML MR RL RR) questo vettore da' i due gruppi
+%     {FL, MR, RL}   e   {FR, ML, RR}
+% cioe' i due triangoli d'appoggio alternati. E' la definizione del tripode:
+% non c'e' niente da giustificare e niente da tarare.
+cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
+
+% --- beta_stance: L'UNICO VALORE AMMISSIBILE ---------------------------
+% [DEFINIZIONE] 0.50 e' l'unico duty che da' appoggio continuo con ESATTAMENTE
+% tre zampe:
+%   < 0.5  esistono istanti con MENO di tre piedi a terra, fuori dalla
+%          stabilita' statica - che e' la condizione su cui il paper fonda
+%          tutta l'architettura ("static stability in all intermediate
+%          positions during movement", p. 11);
+%   > 0.5  compaiono finestre a SEI piedi: 18 vincoli di posizione per 6
+%          gradi di liberta', e i due tripodi si contendono il moto
+%          attraverso la cedevolezza del contatto;
+%   = 0.5  transizione istantanea fra i due triangoli, nessuna delle due.
 cfg.beta_stance = 0.50;
 cfg.duty_swing  = 1 - cfg.beta_stance;
-cfg.T_stance    = cfg.beta_stance * cfg.T;
-cfg.T_swing     = cfg.duty_swing  * cfg.T;
+
+% --- S: LIMITATO DALL'ESTENSIONE DELLA GAMBA ---------------------------
+% [MISURATO] Il vincolo e' l'assert "phantomx:config:reach" in fondo a questo
+% file: a meta' passo la gamba non deve superare l'85% di reachMax = lf + lt
+% = 0.219 m. Con le zampe montate a +/-45 gradi lo spostamento di mezzo passo
+% si somma quasi tutto alla componente radiale, quindi il vincolo morde.
+%
+%     S [m]     estensione usata a meta' passo
+%     0.000     75.0%   (posa ferma)
+%     0.060     80.9%   <- adottato
+%     0.080     83.2%
+%     0.095     85.0%   <- scatta l'assert
+%     0.120     88.2%
+%
+% S = 0.06 sta al 63% del massimo geometrico. La soglia dell'85% non e'
+% convenzionale: e' misurata, "a 89% il robot camminava all'indietro".
 cfg.S           = 0.06;
-cfg.v_nom       = cfg.S / cfg.T_stance;
+
+% --- H: FISSATO DAGLI OSTACOLI DA SCAVALCARE ---------------------------
+% [MISURATO] L'ostacolo di T5 misura 32.8 mm, letti dalla quota dei piedi in
+% appoggio (colonna alt_ost di results/T5_C1.csv, non dalla geometria della
+% mesh). T6 usa gli stessi sette prop. H = 50 mm e' 1.5 volte quell'altezza,
+% e nella run tutte e sei le zampe ci salgono sopra (zampe_su_ost completo).
 cfg.H           = 0.05;
 
-cfg.phase       = [0; 1/2; 1/2; 0; 0; 1/2];
+% --- T: LA VARIABILE DIPENDENTE ----------------------------------------
+% [VERIFICATO] Con S e beta fissati, T fissa la velocita':
+%     v_nom = S / T_stance = 0.06 / 0.50 = 0.120 m/s
+%
+% La verifica sta in limite_velocita, che ha spazzato sei fattori fra 1.0x e
+% 1.5x guardando il rimbalzo del corpo (soglia 10 mm, dichiarata prima):
+%
+%     fattore   rimbalzo
+%       1.00     3.2 mm   <- nominale
+%       1.20     3.4 mm   <- ultima cella con moto stabile
+%       1.30     9.4 mm   <- al bordo
+%       1.40    19.7 mm   <- cede
+%
+% Il nominale sta all'83% del limite misurato. E il numero di Froude
+%     v^2/(g*h) = 0.120^2 / (9.81 * 0.154) = 0.0095
+% colloca la marcia in regime quasi-statico, coerente con l'ipotesi di
+% stabilita' statica su cui poggia l'andatura scelta: le forze d'inerzia
+% valgono l'1% della gravita'.
+cfg.T           = 1.00;
+
+cfg.T_stance    = cfg.beta_stance * cfg.T;
+cfg.T_swing     = cfg.duty_swing  * cfg.T;
+cfg.v_nom       = cfg.S / cfg.T_stance;
 
 %% ===== T2: la curva di velocita' =====
 % DEFINIZIONE CANONICA, un posto solo. La leggono sia script_T2 (impianto

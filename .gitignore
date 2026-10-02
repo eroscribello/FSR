@@ -30,7 +30,6 @@ backup_phantomx_*.zip
 *.slx.original
 # backup di Simulink al salvataggio in versione precedente
 *.slx.r*
-simscape/phantomx_piano_locale.slx
 commit_msg.txt*
 
 # --- output delle simulazioni ---

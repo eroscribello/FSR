@@ -129,7 +129,7 @@ if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t7_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t7_ctrl);
 end
-[t7_mdl, t7_c2] = scegli_controllore(t7_ctrl);
+[t7_mdl, t7_c2, t7_info] = scegli_controllore(t7_ctrl);
 t7_J    = t7_cfg.mass * t7_dv * t7_cfg.v_nom;     % [N*s]
 
 fprintf('\nT7: controllore %s, spinta laterale a t = %.1f s, %d run\n', ...
@@ -155,7 +155,9 @@ for t7_i = 1:numel(t7_J)
     allinea_stimatore(t7_mdl);
     % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
     % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-    if strcmp(t7_mdl, 'phantomx_sim_attitude'), commenta_carico(t7_mdl); end
+    if strcmp(t7_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+        if t7_info.carico, commenta_carico(t7_mdl, 'off'); else, commenta_carico(t7_mdl); end
+    end
     applica_disturbo(t7_mdl, t7_J(t7_i), 'applica', ...
                      struct('t0', t7_t0, 'durata', t7_larg, 'asse', 'y'));
 

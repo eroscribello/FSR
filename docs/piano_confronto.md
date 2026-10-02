@@ -651,8 +651,15 @@ inciampare il robot. Il valore si deriva dal requisito di franco:
 | penetrazione del contatto | 4,3 mm |
 | oscillazione verticale del corpo | 8,6 mm |
 | franco minimo su piano | ~15 mm |
-| ostacolo di T5 | 45 mm |
-| **franco minimo per T5/T6** | **~55 mm** |
+| ostacolo di T5 | ~~45 mm~~ **32.8–34.0 mm** |
+| **franco minimo per T5/T6** | ~~**~55 mm**~~ **~43–47 mm** |
+
+> **[RITIRATO 2/10]** Il 45 mm non ha una provenienza scritta, e con lui la
+> tabella chiedeva ~55 mm di franco per poi adottare `H` = 50 mm. Il valore che
+> vale è quello misurato da `script_T5`: colonna `alt_ost` di
+> `results/T5_C*.csv`, 32.8 / 33.1 / 34.0 mm per C1 / C2 / C3. I gradini di T6
+> salgono di ~35 mm l'uno (35 → 70 → 106 mm), quindi lo stesso franco vale anche
+> lì. Vedi `docs/andatura.md` §6.
 
 `cfg.H = 0,05` è quindi giustificato dai task accidentati, e va dichiarato come
 **vincolo di franco**, non come taratura. Una sola taratura per tutte le
@@ -1542,6 +1549,8 @@ funziona sarà più veloce.
    `allinea_stimatore`. Aggiungerle cambierebbe i risultati di quegli script,
    quindi la decisione è rimandata: non è una correzione neutra.
 5. **`salva_grafico.m`** è stato modificato a mano durante l'indagine del 15/9 e
-   scrive in `grafici/inerzie_og/`. Da rimettere a posto.
+   scrive in `grafici/inerzie_og/`. Da rimettere a posto. **[CHIUSO, verificato
+   il 2/10]** `salva_grafico` scrive in `grafici/`; `inerzie_og/` è in
+   `archivio/grafici/`.
 6. **La terna è stata decisa su T6 solo.** T5 e T4D non sono stati rifatti con
    quella nuova. Se una delle due peggiora molto, la scelta va ridiscussa.

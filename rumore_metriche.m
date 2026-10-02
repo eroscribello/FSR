@@ -213,7 +213,7 @@ try
         rm_t    = rm_prove{rm_i,1};
         rm_ctrl = rm_prove{rm_i,2};
         rm_dur  = rm_prove{rm_i,3};
-        [rm_mdl, rm_c2] = scegli_controllore(rm_ctrl);   % [1/10] modello e interruttore
+        [rm_mdl, rm_c2, rm_info] = scegli_controllore(rm_ctrl);   % [1/10] modello e interruttore
 
         % [1/10] Il terreno si reimposta quando cambia il task OPPURE il
         % modello: con due modelli in gioco, "stesso task" non basta piu'.
@@ -222,7 +222,9 @@ try
             applica_terreno(rm_t, false, rm_mdl);
             applica_inerzie(rm_mdl);
             allinea_stimatore(rm_mdl);   % [25/9] sempre insieme: vedi sezione 11
-            if strcmp(rm_mdl, 'phantomx_sim_attitude'), commenta_carico(rm_mdl); end
+            if strcmp(rm_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+                if rm_info.carico, commenta_carico(rm_mdl, 'off'); else, commenta_carico(rm_mdl); end
+            end
             rm_terreno_ora = [rm_t '|' rm_mdl];
         end
 

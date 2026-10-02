@@ -1,6 +1,6 @@
 # Confronto C1 - C2 - C3
 
-*Generata da `tabella_confronti.m` il 1/10/2026 21:50 dai CSV in `results/`. Non modificare a mano: si rigenera.*
+*Generata da `tabella_confronti.m` il 2/10/2026 18:29 dai CSV in `results/`. Non modificare a mano: si rigenera.*
 
 | simbolo | significato |
 |---|---|
@@ -116,3 +116,35 @@ RMS = coppia efficace del giunto più caricato / limite · picco = coppia massim
 | T7 | 46% | 44% | 39% | 1.2× | 1.3× | 1.5× | 0.41% | 0.45% | 0.38% |
 
 *Lettura: la **marcia supera il carico raccomandato** dal costruttore: giunto peggiore fino al 46% dello stallo, cioè 2.3 volte il 20% indicato da ROBOTIS per un moto stabile. Resta sotto lo stallo; i **picchi d'urto** escono dallo stallo, su al massimo il 0.91% dei campioni.*
+
+## C3 con il pacco (1.1 kg)
+*C3P = C3 con il carico del modello attivo: cubo da 1 kg libero su un vassoio da 0.1 kg fissato al corpo, +69% della massa del robot. Non è un quarto controllore e non si confronta con C1–C2: si mette accanto a C3 scarico per mostrare che porta a termine i task anche carico. Attuatore ideale, come tutta la campagna: la coppia è quanto il controllore chiede, non quanto darebbe un AX-12A. Costo di trasporto ed energia esclusi (normalizzati sulla massa senza pacco).*
+
+| task | | C3 | C3P |
+|---|---|---:|---:|
+| T4 | distanza [m] | 2.42 | 2.35 |
+| T4 | deriva laterale max [m] | 0.0874 | 0.0276 |
+| T4 | beccheggio max [deg] | 1.27 | 1.33 |
+| T4 | rollio max [deg] | 0.426 | 0.441 |
+| T4 | coppia di picco [N m] | 2.70 | 4.13 |
+| T4 | coppia RMS, giunto peggiore [N m] | 0.67 | 1.00 |
+| T4 | pacco a fine run | – | fermo (19 mm) |
+| T4 | **portato a termine col pacco** | | **sì** |
+| T4D | distanza [m] | 3.70 | 3.71 |
+| T4D | deriva laterale max [m] | 0.131 | 0.0353 |
+| T4D | beccheggio max [deg] | 1.98 | 1.68 |
+| T4D | rollio max [deg] | 0.611 | 0.446 |
+| T4D | coppia di picco [N m] | 3.12 | 3.51 |
+| T4D | coppia RMS, giunto peggiore [N m] | 0.589 | 0.956 |
+| T4D | pacco a fine run | – | fermo (14 mm) |
+| T4D | **portato a termine col pacco** | | **sì** |
+| T6 | distanza [m] | 2.99 | 3.08 |
+| T6 | deriva laterale max [m] | 0.0582 | 0.0154 |
+| T6 | beccheggio max [deg] | 4.44 | 3.53 |
+| T6 | rollio max [deg] | 2.78 | 2.07 |
+| T6 | coppia di picco [N m] | 4.18 | 4.62 |
+| T6 | coppia RMS, giunto peggiore [N m] | 0.629 | 0.972 |
+| T6 | pacco a fine run | – | fermo (17 mm) |
+| T6 | **portato a termine col pacco** | | **sì** |
+
+*Criterio, scritto prima di lanciare: T4 salita riuscita; T4D dosso attraversato; T6 — dove in 25 s nessuno dei tre controllori esce dal percorso, nemmeno C3 scarico — nessun ribaltamento, deriva sotto 0.183 m e distanza almeno il 90% di quella di C3. In tutti e tre il pacco non deve essere al bordo o caduto (`stato_pacco.m`: spostamento sul vassoio sotto 5 cm, il gioco fra cubo e vassoio).*

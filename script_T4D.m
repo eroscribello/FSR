@@ -86,7 +86,7 @@ if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t4d_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t4d_ctrl);
 end
-[t4d_mdl, t4d_c2] = scegli_controllore(t4d_ctrl);
+[t4d_mdl, t4d_c2, t4d_info] = scegli_controllore(t4d_ctrl);
 
 % Il terreno si fissa qui, non si eredita.
 applica_terreno('T4D', false, t4d_mdl);
@@ -101,7 +101,9 @@ applica_inerzie(t4d_mdl);
 allinea_stimatore(t4d_mdl);
 % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
 % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t4d_mdl, 'phantomx_sim_attitude'), commenta_carico(t4d_mdl); end
+if strcmp(t4d_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+    if t4d_info.carico, commenta_carico(t4d_mdl, 'off'); else, commenta_carico(t4d_mdl); end
+end
 t4d_G = dosso_profilo(t4d_cfg.terreno.dosso, t4d_cfg.floor_top);
 
 fprintf(['\nT4D: controllore %s, dosso %g/%g gradi, H %.0f mm, cima %.2f m, ' ...

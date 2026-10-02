@@ -194,6 +194,12 @@ lavora in memoria per principio - `applica_terreno`, `applica_inerzie`,
 `allinea_stimatore` - e un file che salva il modello del collega non deve
 stare nella cartella dove si lanciano le campagne.
 
+*[2/10, voce aggiunta]* **`ispeziona_rampa`** — stampa la catena di blocchi
+dalla rampa al World Frame, con pose e porte, insieme a quella del pavimento e
+dell'ostacolo 1. Serviva a decidere la posa della rampa di T4 senza indovinare
+i segni, come era successo con gli ostacoli. Risposta incorporata in
+`applica_terreno`. Sola lettura.
+
 ### Imbardata e beccheggio
 `curva_imbardata` `origine_beccheggio`
 
@@ -308,7 +314,8 @@ conseguenza esce dal progetto vivo:
 |---|---|
 | `mpc_srb/` | l'MPC convesso sul modello a corpo rigido singolo, con `fcns/`, `fcns_MPC/` e il solver qpSWIFT |
 | `simscape/phantomx_sim_mpc.slx` | il ponte verso l'MPC, mai usato in campagna |
-| `docs/README.md` | il porting da quadrupede a esapode |
+| `docs/README.md` | il porting da quadrupede a esapode. *[2/10] In archivio si chiama `README_mpc_porting.md`: rinominato per non confondersi con questo file* |
+| `calcola_J.m` | *[2/10, voce aggiunta]* l'inerzia del robot intero come corpo rigido singolo, cioè `cfg.J`, il modello di predizione dell'MPC. Composta dalle inerzie corrette con il teorema degli assi paralleli, con i due casi limite (masse all'anca, masse al piede). `cfg.J` resta in config ma nessun file vivo la legge |
 | `docs/piano_mpc_simscape.md` | il piano del ponte Simscape, e la ragione per cui e' stato ritirato |
 
 **La ragione resta scritta qui, ed e' il motivo per cui l'archivio esiste:**
@@ -348,10 +355,45 @@ ancora se il `.slx` cambia.
   versionati**: `.gitignore` righe 34 e 75 li ignora. Erano la traccia di ogni
   commit, usata con `git commit -F`, quindi **il testo e' gia' nella storia git**
   per intero: si leggono con `git log`. Sul disco restano finche' non si lancia
-  `git clean -fXd`.
+  `git clean -fXd`. *[2/10 sera] Cancellati anche dal disco: vedi il quarto
+  giro, in fondo.*
 - **`docs/misure_T2_curva_velocita_C3.csv`** — 6 settembre, con «C3» nel nome
   quando C3 non esisteva. Residuo di una nomenclatura abbandonata.
 - **`docs/modifica_slx_ricerca_terreno.md`** — istruzioni per una modifica al
   modello fatta e verificata da settembre.
 - **`docs/scaletta_ricevimento.md` / `.pdf`** — il ricevimento del 30/9 e'
   passato, e quello che ne e' uscito sta in `docs/stato_progetto.md`.
+
+---
+
+## [2/10, sera] Il quarto giro: modelli superati, grafici, cache
+
+Fatto dopo un inventario di tutto il repo con il grafo delle chiamate esteso
+all'XML dei dieci `.slx` (codice dei MATLAB Function, `InitFcn`, percorsi
+delle mesh): la lezione di `run_vuoto`, applicata. Nessun file spostato o
+cancellato ha un chiamante vivo.
+
+### Archiviati
+
+| file | dove | perché |
+|---|---|---|
+| `phantomx_piano_locale.slx` | qui | modello del 14/9, nessun file lo apre. Era in `.gitignore` (riga 33) ma tracciato lo stesso |
+| `grafici/old/` (17 file) | `archivio/grafici/old/` | figure della prima fase (test2…test6, CoM, angoli), ferme al 23/9 |
+| `grafici/inerzie_og/` | `archivio/grafici/inerzie_og/` | figure dell'indagine sulle inerzie, chiusa |
+| `grafici/valida_soglia_T2.*` | `archivio/grafici/` | figura di `valida_soglia`, che è già qui |
+| `results/T4_limite/` | `results/storico/pre_slew_20261001/T4_limite/` | righe **pre-slew** di `script_T4_limite`, stavano fra i risultati validi |
+| `results/controllo_inerzie.csv` | `results/storico/` | lo scrive `controllo_inerzie`, che è qui |
+
+### Cancellati — tutti recuperabili dalla storia git
+
+| file | perché |
+|---|---|
+| `simscape/phantomx_sim_zero_backup_*.slx` (5: 8/9, 16/9 ×2, 17/9 ×2) | copie di sicurezza, ~9.4 MB. Con git non servono: `git show <commit>:simscape/phantomx_sim_zero.slx` |
+| `simscape/phantomx_sim_zero.slx.original` | stessa cosa, 16/9 |
+| `simscape/phantomx_sim_zero_torque.slx` | "Aggiunto primo prototipo C3" (27/9), superato da `phantomx_sim_attitude`. Nessun file lo apre |
+| `commit_msg_*.txt` (14 sul disco, uno solo tracciato: `commit_msg_stimatore.txt`) | il testo e' nella storia git per intero: `git log` |
+
+### Cancellati dal disco, mai tracciati
+
+`estratti/` (si rigenera con `estrai_funzioni`), `slprj/` e `*.slxc` (cache di
+Simulink, si rigenerano alla prima simulazione).

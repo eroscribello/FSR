@@ -16,6 +16,7 @@ stati sovrascritti dalla campagna nuova.
 | `diagnostica/rumore_piano.csv`, `rumore_ostacoli.csv` | pavimento di rumore di C1 e C2 (25-26/9) |
 | `diagnostica/rumore_C3.csv` | pavimento di rumore di C3, slew ±0.3 (1/10) |
 | `diagnostica/fattibilita.csv`, `tabella_confronti.md` | come generati la sera del 1/10 |
+| `T4_limite/` | *[2/10]* una riga per angolo di `script_T4_limite`, C1 e C2, con le inerzie corrette (23/9). Stava in `results/T4_limite/`, fra i risultati validi: spostata qui perché è **pre-slew**, e `script_T4_limite` non è stato rifatto col limitatore |
 
 Valgono come documento della decisione, non come confronto: qui C2→C3
 mescola anello d'assetto e limitatore. Le conclusioni di allora stanno in

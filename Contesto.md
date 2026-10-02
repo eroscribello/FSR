@@ -27,7 +27,7 @@ In quest'ordine. Non serve leggere tutto: serve sapere che c'è.
 | `docs/piano_confronto.md` | prima di discutere una misura. §9 inerzie, §11 il difetto dello stimatore |
 | `docs/come_funziona_ricerca_terreno.md` | prima di toccare C2 |
 | `archivio/README.md` | prima di riaprire un'indagine: 23 sono già chiuse, con l'esito |
-| `commit_msg_*.txt` | la narrazione di ogni cambiamento, col perché |
+| `git log` | la narrazione di ogni cambiamento, col perché. *[2/10] Erano anche i `commit_msg_*.txt` nella radice: cancellati dal disco, il testo è tutto nella storia git* |
 
 Ogni script ha in testa **la domanda, la soglia e le conclusioni possibili**,
 scritte prima di lanciarlo. Leggere l'header prima del codice.
@@ -262,7 +262,7 @@ prima di interpretare qualunque numero.**
 | pavimento di rumore | **quarto giro**, tutti e tre, `results/diagnostica/rumore_slew.csv` (36 run). Solo questo vale |
 | tabella dei confronti | `results/tabella_confronti.md`, generata da `tabella_confronti` (legge `rumore_slew`). Non si modifica a mano |
 | fattibilità attuatori | tutti e tre: giunto peggiore 39–46% dello stallo = **1.9–2.3× il carico raccomandato** da ROBOTIS |
-| non rifatto | `script_T4_limite` (righe pre-slew in archivio) |
+| non rifatto | `script_T4_limite` (righe pre-slew in `results/storico/pre_slew_20261001/T4_limite/`; fino al 2/10 stavano in `results/T4_limite/`, fra i risultati validi) |
 
 ### Fatto il 1/10
 
@@ -306,7 +306,7 @@ prima di interpretare qualunque numero.**
 | `diagnosi_appoggio.m` | perché `appoggio_cinematico` non trova appoggi: velocità del piede, tratti fermi, spettro |
 | `stabilita_zmp.m` | ZMP, baricentro completo e margine sul poligono d'appoggio |
 | `fattibilita.m` | coppia richiesta contro il limite del servo, dai CSV esistenti |
-| `valida_soglia.m` | misura il flag di contatto contro la forza vera, una run sola |
+| `valida_soglia.m` | misura il flag di contatto contro la forza vera, una run sola. **In `archivio/`** dal terzo giro (2/10): fuori dal path |
 | `commenta_carico.m` | toglie (o rimette) il carico dal modello di C3, in memoria |
 | `soglia_deriva_T6.m` | la deriva laterale che basta a mancare un ostacolo di T6, dalla geometria. Sola lettura |
 | `tabella_confronti.m` | C1–C2–C3 per task con il verdetto sul rumore, dai CSV → `results/tabella_confronti.md` |

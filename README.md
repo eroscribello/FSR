@@ -345,7 +345,7 @@ verifica_ik         % escursione di una zampa
 | `common/` | `phantomx_config.m` (parametri condivisi), `inv_kyn.m` (IK di gamba), `tripod_trajectory.m` |
 | `simscape/` | modello Simscape Multibody, il suo script di inizializzazione e `props/` (STL del terreno) |
 | `phantomx_description-master/` | pacchetto ROS originale: mesh STL e URDF. **Non modificare** |
-| `docs/` | `piano_confronto.md` (controllori, metriche, task, debiti), `stato_progetto.md`, paper e datasheet di riferimento |
+| `docs/` | `piano_confronto.md` (controllori, metriche, task, debiti), `stato_progetto.md`, `andatura.md` (generatore, traiettoria del piede, provenienza dei parametri), paper e datasheet di riferimento |
 | `archivio/` | indagini chiuse, con l'esito registrato in `archivio/README.md`. **Fuori dal path** |
 | `grafici/` | figure per la relazione |
 

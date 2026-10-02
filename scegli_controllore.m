@@ -31,6 +31,14 @@ function [mdl, c2, info] = scegli_controllore(ctrl)
 %                                             (Arrigoni et al. 2024)
 %   C3   phantomx_sim_attitude   c2 = true    C2 + retroazione di beccheggio
 %
+%   C3P  phantomx_sim_attitude   c2 = true    [2/10] C3 con il pacco ATTIVO.
+%                                             Non e' un controllore: e' C3 su
+%                                             un robot piu' pesante, per
+%                                             mostrare che porta a termine i
+%                                             task anche carico. Le sue righe
+%                                             vanno in T*_C3P.csv e in una
+%                                             sezione a parte della tabella.
+%
 %   Ogni controllore aggiunge UN meccanismo al precedente, e ogni confronto
 %   fra due adiacenti ne misura uno solo. Se C3 girasse con c2 = false,
 %   C2 e C3 differirebbero per due meccanismi insieme e nessun confronto
@@ -58,11 +66,10 @@ function [mdl, c2, info] = scegli_controllore(ctrl)
 %   tabella con dei controlli, e per questo si puo' chiamare in testa a
 %   ogni script senza effetti collaterali.
 %
-%   In particolare NON verifica che il carico ("il pacco": Brick Solid,
-%   Brick Solid1, 6-DOF Joint1, Spatial Contact Force) sia commentato nel
-%   modello di C3. Al 29/9 e' ATTIVO, e una campagna lanciata cosi'
-%   misurerebbe C3 con il carico contro C1 e C2 scarichi. Il controllo sta
-%   in verifica_attitude.
+%   In particolare NON tocca il carico ("il pacco": Brick Solid, Brick
+%   Solid1, 6-DOF Joint1, Spatial Contact Force), che su disco e' ATTIVO. Dice
+%   solo, con info.carico, se va lasciato: lo toglie o lo rimette
+%   commenta_carico, chiamato dagli script.
 %
 % USO
 %   [t5_mdl, t5_c2] = scegli_controllore(t5_ctrl);
@@ -111,13 +118,12 @@ mdl  = T(k).mdl;
 c2   = T(k).c2;
 info = T(k);
 
-%% ---- promemoria, solo per C3 ----
-% Non e' un controllo: e' una riga che si legge mentre la run parte. Il
-% controllo vero sta in verifica_attitude, che apre il modello.
-if strcmp(nome, 'C3')
-    fprintf(['  C3: controlla che il carico (Brick Solid, 6-DOF Joint1, Spatial\n' ...
-             '      Contact Force) sia commentato in %s, altrimenti stai\n' ...
-             '      confrontando C3 carico con C1 e C2 scarichi.\n'], mdl);
+%% ---- promemoria sul carico ----
+% [2/10] Dall'1/10 gli script lo tolgono da soli con commenta_carico, e da
+% oggi lo LASCIANO solo se info.carico e' vero: qui si dichiara a schermo.
+if info.carico
+    fprintf(2, ['  %s: il pacco resta ATTIVO in %s (1 kg + vassoio 0.1 kg).\n' ...
+                '      Le righe non si confrontano con C1-C3: e'' un altro robot.\n'], nome, mdl);
 end
 end
 
@@ -125,13 +131,18 @@ end
 function T = sc_tabella()
 %SC_TABELLA  L'unico posto dove sta scritto chi gira su cosa.
 %   Aggiungere un controllore significa aggiungere una riga qui, e nient'altro.
+% [2/10] 'carico': true = il pacco del modello di C3 resta ATTIVO. Gli script
+% lo leggono da info.carico; falso per tutti tranne C3P, che non e' un quarto
+% controllore ma C3 con 1.1 kg sopra, per la prova di robustezza.
 T = struct( ...
-    'nome', {'C1', 'C2', 'C3'}, ...
-    'mdl',  {'phantomx_sim_zero', 'phantomx_sim_zero', 'phantomx_sim_attitude'}, ...
-    'c2',   {false, true, true}, ...
-    'cosa', {'cinematico ad anello aperto, tripode', ...
-             'C1 + ricerca del terreno (Arrigoni 2024)', ...
-             'C2 + retroazione di beccheggio, in serie'});
+    'nome',   {'C1', 'C2', 'C3', 'C3P'}, ...
+    'mdl',    {'phantomx_sim_zero', 'phantomx_sim_zero', 'phantomx_sim_attitude', 'phantomx_sim_attitude'}, ...
+    'c2',     {false, true, true, true}, ...
+    'carico', {false, false, false, true}, ...
+    'cosa',   {'cinematico ad anello aperto, tripode', ...
+               'C1 + ricerca del terreno (Arrigoni 2024)', ...
+               'C2 + retroazione di beccheggio, in serie', ...
+               'C3 con il pacco ATTIVO (1 kg + vassoio 0.1 kg)'});
 end
 
 %% ================= helper =================

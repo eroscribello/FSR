@@ -513,7 +513,8 @@ durante il volo, dove la zampa accelera; non è stato misurato.
   piede è più lento del limite. Candidato: l'alzata tarata a parte per quella
   cella (`cfg.t2_taratura`). Non misurato, effetto trascurabile.
 - *[1/10 sera]* **`script_T4_limite` non è stato rifatto** con il
-  limitatore: le sue righe sono in archivio, pre-slew.
+  limitatore: le sue righe sono pre-slew. *[2/10] Erano in `results/T4_limite/`,
+  non in archivio: spostate in `results/storico/pre_slew_20261001/T4_limite/`.*
 - **Il beccheggio di C3 su T5** è l'unico caso in cui C3 è più sensibile di C2
   sull'assetto (rumore 5×). Il verdetto regge lo stesso (rapporto 7.4), ma è
   l'eccezione alla previsione.
@@ -528,7 +529,7 @@ durante il volo, dove la zampa accelera; non è stato misurato.
 | campagna | **7 task × 3 controllori**, tutta rifatta con il limitatore il 1/10 sera. Quella di prima in `results/storico/pre_slew_20261001/` |
 | righe di **C1** | identiche byte per byte a quelle senza limitatore, salvo le celle veloci di T2 (e v0.50x, di pochissimo): il limitatore non tocca l'andatura nominale |
 | pavimento di rumore | **quarto giro**, 36 run, tutti e tre i controllori: `results/diagnostica/rumore_slew.csv`. Quello di C1 è identico al precedente |
-| non rifatto | `script_T4_limite` (righe pre-slew in archivio) |
+| non rifatto | `script_T4_limite` (righe pre-slew in `results/storico/pre_slew_20261001/T4_limite/`, spostate lì il 2/10) |
 | tabella dei confronti | generata dai CSV, `results/tabella_confronti.md`: si rigenera con `tabella_confronti`, non si modifica a mano |
 | fattibilità attuatori | misurata su tutte le celle nominali, tutti e tre i controllori (§6) |
 | documentazione | aggiornata, con le smentite marcate nel punto in cui stavano |
