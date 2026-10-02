@@ -76,7 +76,9 @@ t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);
 if t2_haTar
     fprintf('\nT2: taratura per velocita'' da cfg.t2_taratura\n');
 else
-    fprintf('\nT2: taratura UNICA (cfg.z0, cfg.H) - lancia taratura_T2 per ritarare\n');
+    fprintf('\nT2: taratura UNICA (cfg.z0, cfg.H)\n');
+    % [2/10] Tolto il rimando a taratura_T2: e' in archivio/ e NON chiama
+    % applica_inerzie, quindi rilanciarla oggi tarerebbe su un robot diverso.
 end
 
 for t2_i = 1:numel(t2_fatt)

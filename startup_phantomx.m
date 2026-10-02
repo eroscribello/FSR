@@ -5,15 +5,15 @@ function startup_phantomx()
 % posto (si orienta da sola sulla posizione di questo file).
 %
 % Aggiunge:
-%   common/                        parametri + cinematica condivisi
-%   simscape/                      baseline Simscape
-%   mpc_srb/ + fcns/ + fcns_MPC/   MPC su simulatore ridotto
-%   third_party/qpSWIFT/           solver (il mex, non il prototipo)
+%   common/      parametri + cinematica condivisi
+%   simscape/    i modelli Simscape
+%   metriche/    conversione delle run e metriche
 %
 % NON aggiunge:
-%   third_party/qpSWIFT/prototype/ per non far ombra al mex
 %   phantomx_description-master/   pacchetto ROS, ci arrivano solo le mesh
 %                                  referenziate dal modello
+%   archivio/                      indagini chiuse: fuori dal path apposta,
+%                                  cosi' non puo' mascherare un file vivo
 %   _cestino/
 %
 % Poi verifica che di ogni file critico esista UNA SOLA copia visibile:
@@ -26,12 +26,7 @@ root = fileparts(mfilename('fullpath'));
 daAggiungere = {
     'common'
     'simscape'
-    'mpc_srb'
     'metriche'
-    fullfile('mpc_srb','fcns')
-    fullfile('mpc_srb','fcns','plot')
-    fullfile('mpc_srb','fcns_MPC')
-    fullfile('mpc_srb','third_party','qpSWIFT')
 };
 
 fprintf('\n=== PATH PHANTOMX ===\n');
@@ -47,16 +42,11 @@ for k = 1:numel(daAggiungere)
     end
 end
 
-% il prototipo del solver resta fuori dal path: se serve, si aggiunge a mano
-proto = fullfile(root,'mpc_srb','third_party','qpSWIFT','prototype');
-if isfolder(proto)
-    fprintf('\n  (prototype/ NON sul path. Se ti serve il solver in puro\n');
-    fprintf('   MATLAB:  addpath(''%s'') )\n', strrep(proto,'\','\\'));
-end
-
 %% ---- guardia sui doppioni ----
+% [2/10] Tolti get_params, MAIN, dynamics_SRB, fcn_FSM, vec, hatMap e qpSWIFT:
+% erano i file dell'MPC su simulatore ridotto, archiviato.
 critici = {'phantomx_config','inv_kyn','tripod_trajectory', ...
-           'get_params','MAIN','dynamics_SRB','fcn_FSM','vec','hatMap','qpSWIFT'};
+           'adatta_simscape','metriche','scegli_controllore'};
 
 fprintf('\n--- controllo doppioni ---\n');
 problemi = 0;

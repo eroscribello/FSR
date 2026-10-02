@@ -15,7 +15,7 @@ function F = fattibilita(opt)
 %   coppia e chiudere attorno un anello di posizione con il limite dentro.
 %   Ma quello e' un IMPIANTO DIVERSO - 24 gradi di liberta' invece di 6, 48
 %   stati invece di 12 - ed e' la copia che abbiamo gia' costruito e poi
-%   ritirato a settembre (docs/piano_mpc_simscape.md §3b). Soprattutto:
+%   ritirato a settembre (archivio/piano_mpc_simscape.md §3b). Soprattutto:
 %   C1 e C2 con un anello di posizione attorno alla coppia NON sono piu' C1
 %   e C2. Si confronterebbero quattro controllori, non due saturi.
 %

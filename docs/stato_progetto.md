@@ -19,11 +19,6 @@ impulsivo):
 | **C2** | Arrigoni et al. (*Robotics* 2024, 13, 142): C1 più la **ricerca del terreno** — il piede continua a scendere finché la coppia ai giunti non segnala il contatto |
 | **C3** | C2 più una retroazione sull'assetto del corpo — beccheggio (PI, P = 10, I = 1) e, dall'1/10, rollio (PI, P = 5, I = 0.7) — in serie dopo la ricerca del terreno, sullo stesso impianto degli altri due |
 
-C3 era inizialmente un MPC (RF-MPC di Ding et al.). Abbandonato con ragione
-esplicita: girava su un modello a corpo singolo, cioè un robot diverso da
-quello di Simscape, e il confronto sarebbe stato fra due impianti invece che
-fra due controllori.
-
 ---
 
 ## 2. Il risultato principale non era nel programma

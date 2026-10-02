@@ -1,10 +1,20 @@
-# PhantomX — MPC convesso vs controllo cinematico
+# PhantomX — confronto fra tre controllori in Simscape
 
 Progetto finale di **Field and Service Robotics** (Università Federico II, prof. Fabio Ruggiero).
 
-Porting a esapode dell'MPC convesso *representation-free* di Ding et al. e confronto
-sistematico con il controllore cinematico di Arrigoni et al. (*Robotics* 2024, 13, 142),
-sulla piattaforma PhantomX AX Metal Hexapod Mark II.
+Confronto sistematico fra tre controllori per l'esapode **PhantomX AX Metal Hexapod
+Mark II**, sullo stesso impianto Simulink/Simscape Multibody, contro il lavoro di
+Arrigoni et al. (*Control of a Hexapod Robot Considering Terrain Interaction*,
+Robotics 2024, 13, 142).
+
+| | |
+|---|---|
+| **C1** | cinematico ad anello aperto, andatura a tripode, giunti in posizione |
+| **C2** | C1 + **ricerca del terreno**: il piede scende finché la coppia non segnala il contatto |
+| **C3** | C2 + retroazione sull'assetto del corpo, beccheggio e rollio |
+
+Ogni controllore aggiunge **un solo meccanismo** al precedente: ogni confronto fra
+due adiacenti ne misura uno solo.
 
 ---
 
@@ -14,11 +24,8 @@ sulla piattaforma PhantomX AX Metal Hexapod Mark II.
 |---|---|
 | MATLAB | R2021b o successivo |
 | Toolbox | Simulink, Simscape, Simscape Multibody |
-| Solver QP | qpSWIFT, incluso in `mpc_srb/third_party/` (mex precompilati per Windows, Linux, macOS Intel e Apple Silicon) |
-| Sistema | testato su Windows 11 |
-
-Nessuna installazione: i mex sono già compilati. Se la tua piattaforma non è coperta,
-vedi `mpc_srb/third_party/qpSWIFT/Swift_make.m`.
+| Toolbox | Robotics System Toolbox (`importrobot`, `rigidBodyTree`) |
+| Sistema | testato su Windows 11, MATLAB R2025b |
 
 ---
 
@@ -33,8 +40,8 @@ startup_phantomx
 
 `startup_phantomx` aggiunge le cartelle al path, verifica che non esistano copie
 duplicate dei file critici e stampa i promemoria. **Senza questo comando niente
-funziona**, e gli errori che ottieni (`Unrecognized function 'qpSWIFT'`,
-`Unrecognized function 'inv_kyn'`) non dicono che il problema è il path.
+funziona**, e l'errore che ottieni (`Unrecognized function 'inv_kyn'`) non dice
+che il problema è il path.
 
 Poi, a seconda di cosa vuoi lanciare:
 
@@ -48,13 +55,6 @@ out = sim('phantomx_sim_zero','StopTime','10');
 
 `applica_terreno` accende e spegne gli elementi del terreno **senza salvare il
 modello**: vedi "Scenari di terreno".
-
-### MPC su simulatore ridotto
-
-```matlab
-clear fcn_FSM                      % obbligatorio, vedi "Regole" sotto
-MAIN
-```
 
 ---
 
@@ -344,9 +344,9 @@ verifica_ik         % escursione di una zampa
 |---|---|
 | `common/` | `phantomx_config.m` (parametri condivisi), `inv_kyn.m` (IK di gamba), `tripod_trajectory.m` |
 | `simscape/` | modello Simscape Multibody, il suo script di inizializzazione e `props/` (STL del terreno) |
-| `mpc_srb/` | MPC convesso sul modello a corpo rigido singolo, più `fcns/`, `fcns_MPC/` e il solver |
 | `phantomx_description-master/` | pacchetto ROS originale: mesh STL e URDF. **Non modificare** |
-| `docs/` | `piano_confronto.md` (controllori, metriche, task, calendario, debiti), `README.md` (porting dell'MPC da quadrupede a esapode), paper di riferimento |
+| `docs/` | `piano_confronto.md` (controllori, metriche, task, debiti), `stato_progetto.md`, paper e datasheet di riferimento |
+| `archivio/` | indagini chiuse, con l'esito registrato in `archivio/README.md`. **Fuori dal path** |
 | `grafici/` | figure per la relazione |
 
 Utility nella radice:
@@ -357,23 +357,24 @@ Utility nella radice:
 | terreno | `applica_terreno`, `quota_terreno`, `mappa_contatti` |
 | metriche | `adatta_simscape`, `metriche`, `complanarita`, `verifica_marcia`, `verifica_ik` |
 | modello | `setup_modello`, `setup_terreno_param`, `audit_mesh`, `fix_mesh_paths`, `trova_nel_modello` |
-| diagnostica | `valida_soglia`, `soglia_ottima`, `fattibilita`, `estrai_funzioni` |
-| varie | `pulizia`, `pulizia2` |
+| diagnostica | `fattibilita`, `diagnosi_appoggio`, `stabilita_zmp`, `soglia_deriva_T6`, `estrai_funzioni` |
+| risultati | `tabella_confronti` (genera `results/tabella_confronti.md`), `rumore_metriche` |
+| log | `abilita_log`, `cerca_log` |
 
 ---
 
-## I due simulatori
+## L'impianto
 
-| | baseline Simscape | simulatore ridotto |
-|---|---|---|
-| modello | multibody completo, 25 corpi | corpo rigido singolo (SRB) |
-| attuazione | giunti in **posizione** | forze di contatto ottimizzate |
-| contatto | modello a penalità, attrito | vincoli di cono d'attrito nel QP |
-| entry point | `phantomx_sim_zero.slx` | `MAIN.m` |
-| parametri | `init_gait.m` → `phantomx_config` | `get_params.m` → `phantomx_config` |
+| | |
+|---|---|
+| modello | multibody completo, 25 corpi |
+| attuazione | giunti in **posizione** |
+| contatto | modello a penalità, con attrito |
+| entry point | `phantomx_sim_zero.slx`, `phantomx_sim_attitude.slx` |
+| parametri | `init_gait.m` → `phantomx_config` |
 
-Entrambi leggono **`common/phantomx_config.m`**. È l'unico posto dove si modificano
-masse, geometria, tempi dell'andatura, attrito e limiti degli attuatori.
+Tutto legge **`common/phantomx_config.m`**. È l'unico posto dove si modificano masse,
+geometria, tempi dell'andatura, attrito e limiti degli attuatori.
 
 ### I modelli Simscape
 
@@ -384,7 +385,6 @@ Un simulatore, più `.slx` in `simscape/`. Non si scelgono a mano: li dà
 |---|---|
 | `phantomx_sim_zero.slx` | l'impianto di riferimento, C1 e C2 |
 | `phantomx_sim_attitude.slx` | C3: lo stesso impianto più la retroazione di beccheggio |
-| `phantomx_sim_mpc.slx` | ponte verso l'MPC, non usato nella campagna |
 
 Gli altri `.slx` della cartella sono varianti di lavoro e backup datati.
 
@@ -404,7 +404,6 @@ Sono i tranelli che ci sono già costati tempo. Valgono per chiunque lavori al r
 | regola | perché |
 |---|---|
 | **`startup_phantomx` a ogni sessione** | senza, il path non c'è e gli errori non lo dicono |
-| **`clear fcn_FSM` prima di ogni run dell'MPC** | `fcn_FSM` usa variabili `persistent`: la run *n+1* riparte dallo stato della *n*, e due run identiche danno risultati diversi |
 | **Non salvare il `.slx` dopo `applica_terreno`** | la funzione modifica il modello **in memoria**, apposta perché il file sul disco resti identico e non si generino conflitti. Salvarlo vanifica tutto |
 | **Non commentare i `Rigid Transform` del terreno** | fanno parte della catena che ancora il ramo al World, non del singolo elemento: commentarne uno stacca tutto quello che pende da lì e il pavimento cade come corpo libero, trascinando giù il robot. Si commentano solo solidi e contatti |
 | **Non usare variabili con i nomi dell'`InitFcn`** | l'`InitFcn` del modello è uno *script* che condivide il base workspace e definisce fra l'altro `k`, `j`, `cfg`, `A`, `B`, `C`, `D`, `ss`. Una variabile `ss` in uno snippet maschera la funzione `ss()` e rompe il modello, con un errore che non nomina la variabile |
@@ -451,7 +450,6 @@ task, calendario — è in **`docs/piano_confronto.md`**.
 | **C1** | NUKE feed-forward (baseline del paper) | funzionante |
 | **C2** | Arrigoni closed-loop: rilevazione contatto da coppia | campagna completa |
 | **C3** | C2 + retroazione di beccheggio (`phantomx_sim_attitude`) | implementato, **campagna assente** |
-| ~~C3~~ | ~~MPC convesso~~ | gira sul simulatore ridotto, **fuori dal confronto** per scelta: modello a corpo singolo, sarebbe un confronto fra due impianti |
 
 L'interruttore fra C1 e C2 non richiede blocchi aggiuntivi: la retroazione blocca la
 zampa quando `|tau_misurata − tau_attesa|` supera una soglia su almeno uno dei tre
@@ -531,6 +529,5 @@ Aperti sul banco di prova:
 
 - S. Arrigoni, M. Zangrandi, G. Bianchi, F. Braghin, *Control of a Hexapod Robot
   Considering Terrain Interaction*, Robotics 2024, 13, 142.
-- Ding et al., MPC convesso representation-free per robot legged.
 - [PhantomX AX Metal Hexapod Mark II](https://www.trossenrobotics.com) — Trossen Robotics.
-- [qpSWIFT](https://github.com/qpSWIFT/qpSWIFT) — solver QP, incluso in `third_party/`.
+- [ROBOTIS AX-12A](https://emanual.robotis.com) — datasheet dei servomotori, in `docs/`.

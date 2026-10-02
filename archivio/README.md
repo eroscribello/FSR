@@ -224,3 +224,134 @@ e quelli con i coefficienti scritti a numero: nessuno legge `sys_filter`.
 bit per bit. E' un residuo.
 
 Prima di dedicargli mezza giornata, leggere qui.
+
+---
+
+## [2/10] Il terzo giro: chiusura del progetto
+
+La campagna e' completa — ventun righe, sette task per tre controllori, piu' il
+pavimento di rumore. Da qui in avanti il lavoro e' relazione e presentazione,
+quindi si archivia tutto cio' che ha gia' risposto alla sua domanda.
+
+Criterio: un file resta nella radice solo se **serve ancora a produrre o a
+leggere un risultato**. Tutto il resto scende qui, con l'esito scritto.
+
+### La taratura della soglia di contatto — chiusa
+
+| file | cosa ha prodotto |
+|---|---|
+| `valida_soglia.m` | ha misurato il flag di contatto contro la forza vera al piede, in una run sola. E' la prova che lo stimatore disallineato rendeva il flag equivalente a una costante |
+| `soglia_ottima.m` | la terna per giunto, poi per discesa coordinata sull'OR |
+| `spazzata_soglia.m` | «la soglia conta?», sulle celle della campagna |
+| `prova_soglia_T6.m` | l'A/B fra le due terne su T6, dove l'esito e' binario |
+
+Si chiamavano solo fra loro: cluster chiuso. **L'esito e' in
+`common/phantomx_config.m`**: `cfg.c2.soglia_tau = [0.385 0.136 0.105]`, con il
+ragionamento nel commento. Non serve rilanciarli per sapere da dove viene.
+
+I CSV corrispondenti vanno in `results/storico/`: `valida_soglia.csv`,
+`spazzata_soglia.csv`, `prova_soglia_T6*.csv`, `T6_C2_soglia*.csv`.
+
+### Misure una tantum, risposta gia' incorporata
+
+| file | dove sta la risposta |
+|---|---|
+| `limite_velocita.m` | `cfg.t2_limite = 1.20` e le celle di confronto |
+| `verifica_ik.m` | `cfg.z0_eff`, e il limite di accuratezza (~4 mm) dichiarato nel commento |
+| `verifica_log.m` | «perche' Fleg non arriva»: risolto, e la regola sta in `README.md` |
+| `trova_nel_modello.m` | utility di ricerca nei parametri dei blocchi, serviva durante l'indagine sul `.slx` |
+| `audit_mesh.m`, `fix_mesh_paths.m` | mesh e percorsi relativi: sistemati a settembre, la regola `_l` / `_r` e' nel `README.md` |
+
+### Superati
+
+- **`taratura_T2.m`** — taratura del 17/9. Oltre a essere superata, **non chiama
+  `applica_inerzie`**: rilanciarla oggi darebbe numeri di un robot diverso.
+- **`sistema_results.m`** — marcato in testa `[DA LANCIARE UNA VOLTA]`. Lanciato.
+- **`script_T4_limite.m`** — l'angolo limite di salita, misurato per **C1 e C2
+  soltanto**. Non e' mai stato esteso a C3 e non entra nel confronto: si archivia
+  cosi' com'e', senza citarlo in relazione.
+
+### Scritto e mai lanciato
+
+- **`asimmetria_T6.m`** — doveva misurare il rollio contro l'asimmetria
+  destra/sinistra del terreno di T6. Scritto il 26/9, poi **deciso che non
+  serviva**: l'esito di T6 e' binario (esce dalla zona ostacoli o no) e le sue
+  metriche fini non sono citabili, perche' i controllori seguono traiettorie
+  diverse e non incontrano gli stessi ostacoli. Si archivia con quella decisione,
+  non per abbandono.
+
+### `metriche/` — due file senza chiamanti
+
+`esegui_misure.m` e `adatta_mpc.m`.
+
+> **[2/10, CORRETTO IN GIORNATA]** Qui era finito anche **`run_vuoto.m`**, ed e'
+> stato un errore: `adatta_simscape.m` lo **chiama** alla riga 401
+> (`run = run_vuoto(0)`), ed e' la funzione che costruisce la struttura `run`
+> vuota con tutti i campi obbligatori. Archiviarlo ha rotto ogni conversione di
+> run, con un errore che arriva solo **dopo** la simulazione — a run finita.
+>
+> Causa: il grafo delle chiamate era stato costruito su un insieme incompleto di
+> file, senza `adatta_simscape.m`. Un file chiamato solo da li' risultava orfano.
+> `run_vuoto.m` e' tornato in `metriche/`.
+>
+> La lezione, che vale per il prossimo giro: **un'analisi di dipendenze vale
+> quanto la sua copertura**. Prima di archiviare, verificare che il corpus
+> contenga davvero tutti i file vivi, e lanciare una run di prova.
+
+### L'MPC, per intero
+
+Il professore ha detto di non citarlo in relazione, **nemmeno la versione su
+simulatore ridotto**, dal momento che non si fa nessun confronto con essa. Di
+conseguenza esce dal progetto vivo:
+
+| | |
+|---|---|
+| `mpc_srb/` | l'MPC convesso sul modello a corpo rigido singolo, con `fcns/`, `fcns_MPC/` e il solver qpSWIFT |
+| `simscape/phantomx_sim_mpc.slx` | il ponte verso l'MPC, mai usato in campagna |
+| `docs/README.md` | il porting da quadrupede a esapode |
+| `docs/piano_mpc_simscape.md` | il piano del ponte Simscape, e la ragione per cui e' stato ritirato |
+
+**La ragione resta scritta qui, ed e' il motivo per cui l'archivio esiste:**
+l'MPC girava su un modello a corpo rigido singolo, cioe' un robot diverso da
+quello di Simscape. Confrontarlo con C1 e C2 avrebbe messo a confronto **due
+impianti, non due controllori**. Non e' un lavoro fallito, e' una scelta di
+disegno dell'esperimento — ma non si cita, e quindi vive solo qui.
+
+`fattibilita.m` rimanda ancora a `piano_mpc_simscape.md` §3b per l'argomento
+sull'impianto diverso: il riferimento e' stato aggiornato a questa cartella.
+
+**Cosa e' stato tolto dai file vivi** (serve saperlo se qualcosa non torna):
+
+| file | modifica |
+|---|---|
+| `startup_phantomx.m` | tolti dal path `mpc_srb/` e sottocartelle, il blocco su `qpSWIFT/prototype`, e i nomi MPC dalla guardia sui doppioni (che ora copre `adatta_simscape`, `metriche`, `scegli_controllore`) |
+| `common/phantomx_config.m` | tolto `cfg.mu_mpc` con il suo assert e la sua stampa: era l'attrito assunto dal QP. **`cfg.J` resta**, perche' e' una proprieta' misurata e verificata del robot, non un parametro del controllore archiviato — ma oggi nessun file vivo la legge |
+| `README.md` | titolo, requisiti, avvio rapido, struttura, «i due simulatori», regole e riferimenti |
+| `docs/stato_progetto.md` | il paragrafo sull'origine del progetto |
+
+### `estratti/` — non archiviata, perche' non era nel repository
+
+Quattro cartelle di codice estratto dai blocchi MATLAB Function, prodotte da
+`estrai_funzioni.m` per poter diffare logica che vive dentro un `.slx` binario:
+`15settembre`, `oggi` (= `phantomx_sim_zero` del 26/9), `c3`, `c3_roll`. Hanno
+gia' risposto — e' cosi' che si e' visto che il roll control aggiungeva
+`y_i * u_phi`.
+
+**`.gitignore` riga 73 le ignora**: non sono mai state versionate, quindi non
+c'e' niente da archiviare. Restano sul disco di chi le ha generate e si
+rigenerano in un comando. **`estrai_funzioni.m` resta nella radice**: serve
+ancora se il `.slx` cambia.
+
+### Cancellati, non archiviati
+
+- **`commit_msg_*.txt`** (12 file nella radice) — come `estratti/`, **non erano
+  versionati**: `.gitignore` righe 34 e 75 li ignora. Erano la traccia di ogni
+  commit, usata con `git commit -F`, quindi **il testo e' gia' nella storia git**
+  per intero: si leggono con `git log`. Sul disco restano finche' non si lancia
+  `git clean -fXd`.
+- **`docs/misure_T2_curva_velocita_C3.csv`** — 6 settembre, con «C3» nel nome
+  quando C3 non esisteva. Residuo di una nomenclatura abbandonata.
+- **`docs/modifica_slx_ricerca_terreno.md`** — istruzioni per una modifica al
+  modello fatta e verificata da settembre.
+- **`docs/scaletta_ricevimento.md` / `.pdf`** — il ricevimento del 30/9 e'
+  passato, e quello che ne e' uscito sta in `docs/stato_progetto.md`.

@@ -104,15 +104,16 @@ cfg.m_link = 0.024357719;
 cfg.m_foot = 1000 * (4/3)*pi*cfg.contact.foot_r^3;
 cfg.mass   = cfg.m_body + 24*cfg.m_link + 6*cfg.m_foot;
 
-% [VERIFICATO 24/9] Inerzia del ROBOT INTERO visto come corpo rigido: la usa
-% solo il modello di predizione dell'MPC (p.J in get_params). Non e' cfg.I_body,
+% [VERIFICATO 24/9] Inerzia del ROBOT INTERO visto come corpo rigido.
+% [2/10] RESIDUO: la usava solo il modello di predizione dell'MPC, archiviato;
+% nessun file vivo la legge. Si tiene perche' e' una grandezza misurata e
+% verificata, e toglierla da cfg non guadagna niente. Non e' cfg.I_body,
 % che e' del solo telaio: J comprende anche le zampe, che pesano il 38% del
 % totale e stanno fino a 20 cm dall'asse.
 % Verificata con calcola_J: composizione con gli assi paralleli dai valori
 % corretti dei link. Sta dentro la forchetta fra i due casi limite (masse
 % tutte all'anca / tutte al piede) e circa il 15% sotto il modello
-% equispaziato. Si tiene: 15% su J e' poco accanto all'errore di modello
-% dell'SRB, che le zampe le considera senza massa.
+% equispaziato.
 % NON si puo' ricavare con importrobot: le inerzie dell'URDF sono quelle
 % sbagliate di ~1000 volte (vedi applica_inerzie).
 cfg.J       = diag([0.01444, 0.01751, 0.02889]);
@@ -209,12 +210,12 @@ cfg.t2_fattori = [0.5 1.0 1.20 1.5 2.0];
 % corpoZ_pp, non err_vx_rms. A quelle velocita' l'errore non e' un errore di
 % inseguimento - i giunti eseguono la corsa comandata al 118% a tutte le
 % velocita' - e' il robot che non cammina. Chiamarlo errore di inseguimento
-% attribuirebbe a C1 un difetto che non ha e all'MPC un merito che non si e'
-% guadagnato.
+% attribuirebbe a C1 un difetto che non ha, e a un controllore in anello
+% chiuso un merito che non si e' guadagnato.
 %
-% E' anche l'ipotesi da verificare su C2 e C3: se l'MPC cammina dove C1
-% rimbalza, il risultato del progetto e' che l'MPC ESTENDE L'INVILUPPO, con
-% la soglia di C1 misurata in anticipo invece che trovata a posteriori.
+% E' anche l'ipotesi da verificare su C2 e C3: se camminano dove C1 rimbalza,
+% il risultato e' che la retroazione ESTENDE L'INVILUPPO, con la soglia di C1
+% misurata in anticipo invece che trovata a posteriori.
 % Il nome t2_limite resta per compatibilita' con gli script: il valore e'
 % l'ultima cella con moto stabile, vedi sopra.
 cfg.t2_limite    = 1.20;              % [x] ultima cella con moto stabile
@@ -242,7 +243,8 @@ cfg.contact.w = 2e-3;    % la forza sale su 2 mm invece di 1
 cfg.contact.vcrit = 1e-2;   % [TARATO] regolarizzazione attrito, 10 mm/s
 
 cfg.mu_plant = 0.9;
-cfg.mu_mpc   = 0.6;
+% [2/10] Tolto cfg.mu_mpc: era l'attrito che il QP dell'MPC assumeva nei
+% vincoli di cono. L'MPC e' archiviato e nessun file vivo lo leggeva.
 
 % [CORRETTO 25/9] floor_dim DESCRIVEVA UN BLOCCO CHE NON ESISTE PIU'.
 %   Valeva [4 4 0.05]: erano le dimensioni del Brick Solid usato come pavimento
@@ -533,8 +535,7 @@ assert(cfg.foot_offset < cfg.lt_mesh, 'phantomx:config:sfera', ...
     ['Il centro della sfera (%.5f) e'' oltre la punta della tibia (%.5f):\n' ...
      'la sfera sporgerebbe fuori dal piede.'], cfg.foot_offset, cfg.lt_mesh);
 
-assert(cfg.mu_mpc <= cfg.mu_plant, 'phantomx:config:mu', ...
-    'L''MPC assume un attrito superiore a quello del modello fisico.');
+
 
 assert(abs(cfg.S - cfg.v_nom*cfg.T_stance) < 1e-12, 'phantomx:config:passo', ...
     'S deve valere v_nom*T_stance, altrimenti il piede striscia in appoggio.');
@@ -558,7 +559,7 @@ if verbose
     fprintf('  andatura     T %.2f s  appoggio %.2f s  passo %.3f m  -> %.3f m/s\n', ...
             cfg.T, cfg.T_stance, cfg.S, cfg.v_nom);
     fprintf('  quota corpo  %.3f m (geometrica)\n', cfg.body_z0);
-    fprintf('  attrito      modello %.2f  MPC %.2f\n\n', cfg.mu_plant, cfg.mu_mpc);
+    fprintf('  attrito      modello %.2f\n\n', cfg.mu_plant);
 end
 
 end
