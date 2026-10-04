@@ -1,48 +1,9 @@
 function info = diagnosi_appoggio(r, cfg, v_app)
-%DIAGNOSI_APPOGGIO  Perche' appoggio_cinematico non trova nessun appoggio.
+% Misura perche' appoggio_cinematico non trova nessun appoggio.
 %
 %   diagnosi_appoggio(t4_run)
 %   info = diagnosi_appoggio(r, cfg, 0.05)
 %
-% LA DOMANDA
-%   [29/9] script_T4 su C3 si e' fermato con "Index exceeds array bounds" in
-%   t4_salita: zs_ord = sort(zf(fermo)) era VUOTO, cioe' appoggio_cinematico
-%   non ha riconosciuto nemmeno un appoggio in 20 s. Ma l'animazione mostra
-%   un tripode regolare.
-%
-%   Il criterio e' due condizioni insieme:
-%       |v| del piede nel mondo  <  v_app            (0.05 m/s)
-%       per almeno  0.25 * T_stance  di fila         (0.125 s = 25 campioni)
-%   Puo' fallire per la prima, per la seconda, o per entrambe, e le tre cose
-%   vogliono dire cose diverse. Questa funzione dice quale.
-%
-% SOLO LETTURA. Non simula, non tocca il modello: legge una run gia' fatta,
-% quella che e' rimasta nel workspace dopo l'errore.
-%
-% I TRE ESITI, dichiarati qui prima di guardare i numeri
-%
-%   A. tratti LUNGHI, velocita' appena sopra la soglia
-%      Il piede striscia lentamente invece di stare fermo. Non e' un difetto
-%      del controllore: e' v_app troppo stretta per questo task. Si alza, e
-%      si DICHIARA di averla alzata.
-%
-%   B. tratti CORTI, velocita' che attraversa la soglia avanti e indietro
-%      Chattering: il piede vibra. L'andatura puo' sembrare corretta
-%      nell'animazione e il contatto essere frammentato sotto i 0.125 s.
-%      Il problema e' nell'anello, non nella misura. Candidato: il PID
-%      d'assetto, discreto a 1 ms, in presa diretta sulla quota del piede.
-%
-%   C. nessun tratto, velocita' sempre alta
-%      Il piede non si appoggia mai davvero. Va riguardata l'animazione al
-%      rallentatore prima di toccare qualunque soglia.
-%
-% COME SI CHIUDE LA QUESTIONE
-%   Lo stesso grafico su C2, stesso task:
-%       OVERRIDE_CTRL = 'C2'; script_T4; clear OVERRIDE_CTRL
-%       diagnosi_appoggio(t4_run)
-%   Stessa rampa, stesso impianto, unica differenza l'anello d'assetto.
-%
-% Progetto FSR PhantomX - A. Russo
 
 if nargin < 1 || isempty(r)
     if evalin('base', 'exist(''t4_run'',''var'')')
@@ -91,8 +52,6 @@ for i = 1:6
 end
 
 %% ---- quale soglia servirebbe ----
-% Non per adottarla: per capire di quanto si sbaglia. Una soglia che deve
-% raddoppiare e' un'altra cosa da una che deve decuplicare.
 prove = v_app * [1 1.5 2 3 5 10 20];
 fprintf('\n  soglia necessaria perche'' OGNI zampa abbia un tratto valido:\n');
 fprintf('  %10s %s\n', 'v_app', 'zampe con un tratto >= dmin');
@@ -135,18 +94,10 @@ end
 fprintf('  -----------------------------------------------------------\n\n');
 
 %% ---- frequenza del disturbo ----
-% [30/9] E' il numero che distingue i meccanismi: il ciclo dell'andatura sta
-% a 1/T, un anello di controllo instabile e il modello di contatto stanno
-% a decine di Hz. Si guarda solo sopra i 2 Hz, altrimenti vince sempre
-% l'andatura.
-%
-% ATTENZIONE: adatta_simscape ricampiona a 200 Hz, quindi sopra i 100 Hz
-% c'e' aliasing. Un picco vicino al limite NON e' una misura: vuol dire che
-% il disturbo vero potrebbe essere piu' veloce e va rilogato piu' fitto.
 fs  = 1/dt;
 sel = t >= t(1) + 0.25*(t(end)-t(1)) & t <= t(1) + 0.75*(t(end)-t(1));
 Ns  = sum(sel);
-w   = 0.5 - 0.5*cos(2*pi*(0:Ns-1)'/(Ns-1));      % Hann a mano: niente toolbox
+w   = 0.5 - 0.5*cos(2*pi*(0:Ns-1)'/(Ns-1));      
 f   = (0:floor(Ns/2))' * fs / Ns;
 P   = zeros(numel(f), 6);
 for i = 1:6

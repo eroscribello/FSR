@@ -1,105 +1,29 @@
 function F = fattibilita(opt)
-%FATTIBILITA  I controllori girerebbero sui motori veri? Dai CSV, senza simulare.
 %
 %   fattibilita
 %   F = fattibilita(struct('tau_lim', 1.5))
 %
-% PERCHE' NON SI PUO' "SIMULARE LA SATURAZIONE" E BASTA
-%   [28/9] In C1 e C2 i giunti sono attuati in POSIZIONE
-%   (MotionActuationMode = InputMotion): il solutore impone la traiettoria e
-%   la coppia e' una REAZIONE, calcolata a posteriori per far tornare i conti.
-%   Non c'e' nessun ingresso di coppia su cui mettere un blocco Saturation, e
-%   il Revolute Joint di Simscape non ha un parametro di coppia massima.
-%
-%   Per saturare davvero bisognerebbe passare i giunti ad attuazione in
-%   coppia e chiudere attorno un anello di posizione con il limite dentro.
-%   Ma quello e' un IMPIANTO DIVERSO - 24 gradi di liberta' invece di 6, 48
-%   stati invece di 12 - ed e' la copia che abbiamo gia' costruito e poi
-%   ritirato a settembre (archivio/piano_mpc_simscape.md §3b). Soprattutto:
-%   C1 e C2 con un anello di posizione attorno alla coppia NON sono piu' C1
-%   e C2. Si confronterebbero quattro controllori, non due saturi.
-%
-% COSA MISURA QUESTO FILE, ALLORA
-%   La coppia RICHIESTA dal controllore, contro quella che il motore puo'
+%   Misura la coppia richiesta dal controllore, contro quella che il motore puo'
 %   dare. E' un indicatore di FATTIBILITA', non una simulazione:
 %
 %     dice      "questo controllore chiede 2.8 volte il limite del motore,
 %                per il 12% dei campioni"
 %     NON dice  "con i motori veri il robot cadrebbe cosi'"
 %
-%   La differenza va detta in relazione. Quello che si puo' concludere e'
-%   che una richiesta molto sopra il limite rende la run NON REALIZZABILE
-%   cosi' com'e'; come degraderebbe esattamente, non lo sappiamo.
 %
-% DA DOVE VENGONO I NUMERI
-%   Da results/<task>_<controllore>.csv, cioe' dalle run di campagna gia'
+%   I  numeri vegnono da results/<task>_<controllore>.csv, cioe' dalle run di campagna gia'
 %   fatte. metriche calcola gia' tutto:
 %     tau_max                  picco su tutti i giunti e tutti gli istanti
 %     tau_rms                  valore efficace
 %     frazione_saturo          frazione di campioni-giunto sopra cfg.tau_max
 %     tau_rms_giunto_peggiore  il giunto piu' caricato
 %     potenza_max              picco di potenza meccanica
-%   Nessuna simulazione: zero rischio di cambiare qualcosa per sbaglio.
-%
-% I DUE LIMITI, PERCHE' NON SONO D'ACCORDO
-%   cfg.tau_max = 1.5 N*m e' il valore da datasheet del servo; l'URDF ne
-%   dichiara 2.8. La tabella riporta il rapporto su entrambi, cosi' la
-%   conclusione non dipende da quale dei due si sceglie - e se cambia, si
-%   vede subito.
-%
-% [1/10] C3
-%   LA DOMANDA: l'anello d'assetto somma un termine alla quota di ogni
-%   piede, quindi chiede ai giunti un lavoro che C2 non chiede. Sta ancora
-%   dentro il limite del servo?
-%   PREVISIONE, SCRITTA PRIMA DI LANCIARE: C3 spende il 37-54% di energia in
-%   piu' di C2 (stato_progetto §4), ma tau_rms di C3 e' leggermente PIU'
-%   BASSO (-2/-7%, dichiarabile). Quindi il carico sostenuto dovrebbe restare
-%   dove sta per C1 e C2 (41-46% del limite sul giunto peggiore); i picchi
-%   possono salire (T3: 3.5 N*m contro 2.6 di C2).
-%   STESSE SOGLIE di sempre, gia' nel codice: giunto peggiore < 70% del limite
-%   = la marcia sta dentro; 70-100% = dentro senza margine; > 100% = fuori.
-%   C3 e' attuato come C1 e C2 (giunti in posizione, stesso impianto): la
-%   coppia e' una reazione anche qui, e vale la stessa avvertenza.
-%   COSA E' CAMBIATO NEL CODICE: i controllori non sono piu' due fissi.
-%   Il riassunto, la figura e il confronto dei picchi girano su opt.ctrl, e
-%   il confronto si fa fra coppie ADIACENTI (C1-C2, C2-C3).
-%
-% [1/10, sera] LA SECONDA SOGLIA: QUELLA DEL COSTRUTTORE
-%   Il 70% qui sotto e' una soglia NOSTRA, mai giustificata. Il manuale
-%   ROBOTIS dell'AX-12A (docs/ROBOTIS_AX-12A_emanual.pdf, pag. 3) dice:
-%     "Stall torque is the maximum instantaneous and static torque. Stable
-%      motions are possible with robots designed for loads with 1/5 or less
-%      of the stall torque."
-%   cioe' cfg.tau_lavoro = 0.3 N*m. Il carico SOSTENUTO va confrontato con
-%   quella, non con lo stallo: lo stallo resta il riferimento per i picchi.
-%   Le due soglie vengono riportate insieme; la conclusione sulla marcia la
-%   decide quella del costruttore.
-%   PREVISIONE, SCRITTA PRIMA DI LANCIARE: sui numeri di prima dello slew
-%   rate il giunto peggiore stava al 38-46% dello stallo, cioe' 1.9-2.3
-%   volte tau_lavoro. Lo slew rate non cambia la coppia sostenuta (abbassa i
-%   picchi): ci si aspetta lo stesso, cioe' "LA MARCIA SUPERA IL CARICO
-%   RACCOMANDATO" per tutti e tre. Se fosse cosi', la frase "la marcia sta
-%   dentro con margine" di stato_progetto §6 va ritirata.
-%
-% USO
-%   fattibilita                       % tutti i task, C1, C2 e C3
-%   F = fattibilita;  disp(F)
-%
-% Progetto FSR PhantomX - A. Russo
 
 if nargin < 1, opt = struct(); end
 cfg = phantomx_config();
 def = struct('tau_lim', cfg.tau_max, 'tau_lim_urdf', 2.8, 'tau_lavoro', cfg.tau_lavoro, ...
              'task', {{'T2','T3','T4','T4D','T5','T6','T7'}}, ...
              'ctrl', {{'C1','C2','C3'}}, 'grafico', true);
-% [CORRETTO 29/9] LA CELLA NOMINALE, E PERCHE' SERVE.
-%   Prendere il massimo su tutte le celle di un task fa dominare la tabella
-%   dalla cella piu' stressata: su T2 e' v1.50x, dove il tripode e' gia'
-%   oltre il suo limite (archivio/README.md: l'ultima cella con moto del
-%   corpo stabile e' 1.20x) e la coppia di picco vale 14.6 N*m, dieci volte
-%   il limite. Quel numero descrive un'andatura che non funziona, non un
-%   controllore che chiede troppo. Il confronto si fa al PUNTO DI LAVORO
-%   NOMINALE, e le celle estreme si riportano a parte.
 nom = struct('T2','v1.00x', 'T3','yaw+0.100', 'T7','dv0.00');
 f = fieldnames(def);
 for k = 1:numel(f)
@@ -124,20 +48,10 @@ for i = 1:numel(opt.task)
             g.volte_datasheet = g.tau_max / opt.tau_lim;
             g.volte_urdf      = g.tau_max / opt.tau_lim_urdf;
             g.rms_su_limite   = g.tau_rms / opt.tau_lim;
-            % [AGGIUNTO 29/9] IL GIUNTO PEGGIORE, NON LA MEDIA SUI 18.
-            %   tau_rms media su tutti i giunti, e la coxa porta quasi niente
-            %   (misurato validando la soglia di contatto: il contatto e'
-            %   verticale, la coxa ruota attorno all'asse verticale). Mediare
-            %   su diciotto giunti di cui sei scarichi sottostima quello che
-            %   lavora. Il servo che si brucia e' il piu' caricato, non quello
-            %   medio: la fattibilita' si giudica su questa colonna.
             g.tau_rms_peggiore = fa_num(T, r, 'tau_rms_giunto_peggiore');
             g.peggiore_su_limite = g.tau_rms_peggiore / opt.tau_lim;
-            % [1/10] contro il carico raccomandato dal costruttore (1/5 stallo)
             g.peggiore_su_lavoro = g.tau_rms_peggiore / opt.tau_lavoro;
             g.rms_su_lavoro      = g.tau_rms / opt.tau_lavoro;
-            % una run fallita non dice niente sulla coppia richiesta: se il
-            % robot sta fermo la coppia e' bassa, e non e' una buona notizia
             ft = fa_num(T, r, 'frazione_task');
             cf = fa_campo(T, r, 'causa_fallimento', "");
             g.valida = ~(isnan(ft) || ft < 0.5 || strlength(strtrim(cf)) > 0);
@@ -198,13 +112,7 @@ for i = 1:numel(opt.task)
     fprintf('  %-6s', opt.task{i});  fprintf(' %32s', s);  fprintf('\n');
 end
 
-%% ---- le conclusioni che i numeri sostengono, e quelle che no ----
-% [CORRETTO 29/9] LA PRIMA VERSIONE GUARDAVA SOLO IL PICCO, E CONCLUDEVA MALE.
-%   Diceva "nessuno dei due e' realizzabile" appena tau_max superava il
-%   limite. Ma tau_max e' il massimo su tutti i giunti e tutti gli istanti:
-%   basta un urto. Il numero che dice se il motore regge la marcia e' il
-%   VALORE EFFICACE, e accanto la frazione di tempo sopra il limite.
-%   Sono due domande diverse e vanno separate.
+%% ---- conclusioni ----
 rms_med = mean(N.rms_su_limite, 'omitnan');
 peg_med = mean(N.peggiore_su_limite, 'omitnan');
 peg_max = max(N.peggiore_su_limite);
@@ -220,7 +128,6 @@ fprintf('  frazione di campioni sopra il limite:      da %.2f%% a %.2f%%\n', ...
 fprintf('  picco richiesto:                           da %.1fx a %.1fx il limite\n', ...
         min(pic), max(pic));
 
-% [1/10] il carico sostenuto contro la raccomandazione del costruttore
 peg_lav_min = min(N.peggiore_su_lavoro);  peg_lav_max = max(N.peggiore_su_lavoro);
 rms_lav     = mean(N.rms_su_lavoro, 'omitnan');
 fprintf(['\n  CONTRO IL COSTRUTTORE (carico per moto stabile = 1/5 dello stallo,\n' ...
@@ -240,8 +147,6 @@ end
 
 fprintf('\n  CONTRO LO STALLO, DUE REGIMI, E VANNO DETTI SEPARATI:\n');
 if peg_max < 0.7
-    % [1/10] "con margine" era il giudizio sul 70%, soglia nostra: il margine
-    % vero lo dice la riga del costruttore qui sopra
     fprintf(['  - SOTTO LO STALLO. Anche il giunto piu'' caricato resta al\n' ...
              '    %.0f%% dello stallo (soglia nostra 70%%), per tutti i controllori.\n'], 100*peg_max);
 elseif peg_max < 1
@@ -258,7 +163,6 @@ fprintf(['  - GLI URTI NO. Il picco arriva a %.1f volte il limite, ma solo sul\n
          '    %.2f%% dei campioni al massimo: sono transitori di impatto, non\n' ...
          '    una richiesta continua. Un servo vero li taglierebbe.\n'], max(pic), 100*sat_max);
 
-% chi chiede di piu', a parita' di task nominale - [1/10] per coppie adiacenti
 for j2 = 1:nc-1
     pa = opt.ctrl{j2};  pb = opt.ctrl{j2+1};
     pc = 0; ps = 0; pt = 0;
@@ -307,8 +211,6 @@ if opt.grafico
     nexttile;
     b = bar(100*vr); grid on; set(gca,'XTickLabel',et);
     yline(100, 'k-', 'stallo', 'LineWidth',1.8);
-    % [1/10] la soglia del costruttore, e i titoli calcolati: prima dicevano
-    % "la marcia sta dentro" a prescindere dai numeri
     yline(100*opt.tau_lavoro/opt.tau_lim, 'r--', 'carico raccomandato (1/5 stallo)', 'LineWidth',1.5);
     ylabel('coppia efficace del giunto peggiore / stallo  [%]'); ylim([0 110]);
     legend(b, opt.ctrl, 'Location','northwest');

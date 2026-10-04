@@ -1,5 +1,5 @@
 function info = applica_terreno(task, verbose, mdl, opt)
-%APPLICA_TERRENO Configura gli elementi del terreno per la simulazione.
+% APPLICA_TERRENO Configura gli elementi del terreno per la simulazione.
 %
 % USO:
 %   applica_terreno('T1')    -> Piano liscio
@@ -7,12 +7,9 @@ function info = applica_terreno(task, verbose, mdl, opt)
 %   applica_terreno('T4D')   -> Piano liscio + Dosso (salita, cima, discesa)
 %   applica_terreno('T5')    -> Piano liscio + Ostacolo 1
 %   applica_terreno('T6')    -> Piano liscio + Tutti gli ostacoli (1..7)
-%   applica_terreno('TUTTO') -> Tutti gli elementi attivi
 %
 % OPZIONI (quarto argomento)
 %   .rampa_gradi   inclinazione della rampa di T4 [gradi]. Default da cfg.
-%                  La rampa esce dal pavimento sempre a cfg.terreno.rampa_x_inizio,
-%                  qualunque sia l'angolo: serve alla ricerca dell'angolo limite.
 %
 % RAMPA E DOSSO USANO LO STESSO SOLIDO (Solid_Rampa)
 %   T4  : il cubo 8 x 8 x 0.1 del pavimento, inclinato.
@@ -47,17 +44,11 @@ end
 
 tutti_gli_elementi = fieldnames(cat);
 
-% I Rigid Transform NON seguono la convenzione di nomi dei solidi: il solido
-% Solid_Ostacolo1 e' appeso a "Rigid Transform10", non a
-% "Rigid Transform_Ostacolo1". Cercati per nome, set_param falliva e il catch
-% vuoto lo nascondeva: le sezioni 3 e 4 non hanno mai toccato gli ostacoli.
-% Si risolvono seguendo il collegamento del solido, che non dipende dai nomi.
 mancanti = {};
 for i = 1:numel(tutti_gli_elementi)
     elem = tutti_gli_elementi{i};
     cat.(elem).rt_path = rt_collegato(mdl, cat.(elem).solido);
     if isempty(cat.(elem).rt_path)
-        % prova ancora il nome di catalogo, se un giorno il blocco verra' rinominato
         if getSimulinkBlockHandle([mdl '/' cat.(elem).rt]) > 0
             cat.(elem).rt_path = [mdl '/' cat.(elem).rt];
         end
@@ -75,7 +66,7 @@ switch task
         error('applica_terreno:task', 'Task ''%s'' non previsto.', task);
 end
 
-%% 3. Normalizzazione: Garantire Rigid Transform SEMPRE attivi
+%% 3. Normalizzazione: Garantire Rigid Transform sempre attivi
 for i = 1:numel(tutti_gli_elementi)
     elem = tutti_gli_elementi{i};
     if isempty(cat.(elem).rt_path), continue; end
@@ -87,12 +78,6 @@ lisciOn = ismember('pavimento', elementi_attivi);
 ost_dz  = ternario(lisciOn, getfield_default(cfg, 'terreno.ost_dz', 0.025), 0);
 assignin('base', 'ost_dz', ost_dz);
 
-% Offset per gli ostacoli: quota (ost_dz, uguale per tutti) e spostamento
-% lungo il percorso (cfg.terreno.ost_dx.<task>, uno per ostacolo e per task).
-% Lo spostamento e' scritto come NUMERO nell'espressione, non come nome di
-% variabile: se il modello venisse salvato dopo applica_terreno, un nome nuovo
-% nell'espressione lo renderebbe non compilabile senza quella variabile nel
-% workspace - e' gia' successo con ost_dz.
 ost_dx = zeros(1,7);
 if isfield(cfg,'terreno') && isfield(cfg.terreno,'ost_dx') && isfield(cfg.terreno.ost_dx, task)
     ost_dx(1:numel(cfg.terreno.ost_dx.(task))) = cfg.terreno.ost_dx.(task);
@@ -101,7 +86,7 @@ for k = 1:7
     elem = sprintf('ostacolo%d', k);
     rt_path = cat.(elem).rt_path;
     if isempty(rt_path)
-        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.(elem).solido); %#ok<AGROW>
+        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.(elem).solido); 
         continue
     end
     try
@@ -114,7 +99,7 @@ for k = 1:7
                 sprintf('floor_off(:).'' + [%.6g 0 ost_dz]', ost_dx(k)));
         end
     catch ME
-        mancanti{end+1} = sprintf('%s (%s): %s', cat.(elem).solido, rt_path, ME.message); %#ok<AGROW>
+        mancanti{end+1} = sprintf('%s (%s): %s', cat.(elem).solido, rt_path, ME.message);
     end
 end
 if verbose
@@ -126,21 +111,15 @@ if verbose
     end
 end
 
-% Posa della Rampa (se attiva). Come per gli ostacoli, il Rigid Transform si
-% trova dal collegamento del solido; un fallimento finisce in 'mancanti' e in
-% T4/T4D e' un errore (sezione 5b), non un avviso nascosto da verbose.
-% L'offset del blocco NON e' la posizione nel mondo: il solido sta sulla porta
-% B, il mondo sulla F, quindi il solido e' nella posa inversa (vedi il
-% commento su rampa_x_inizio in phantomx_config).
 if ismember('rampa', elementi_attivi) && isfield(cfg, 'terreno')
     rt_rampa  = cat.rampa.rt_path;
     sol_rampa = [mdl '/' cat.rampa.solido];
     if isempty(rt_rampa)
-        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.rampa.solido);   %#ok<AGROW>
+        mancanti{end+1} = sprintf('Rigid Transform di %s', cat.rampa.solido);   
     else
         try
             if strcmp(task, 'T4D')
-                % dosso scritto direttamente in coordinate mondo: posa identita'
+                % dosso scritto direttamente in coordinate mondo
                 G   = dosso_profilo(cfg.terreno.dosso, cfg.floor_top);
                 stl = scrivi_dosso(G, cfg.terreno.dosso.larghezza);
                 set_param(sol_rampa, 'ExtGeomFileName', stl);
@@ -167,7 +146,7 @@ if ismember('rampa', elementi_attivi) && isfield(cfg, 'terreno')
                 end
             end
         catch ME
-            mancanti{end+1} = sprintf('%s (%s): %s', cat.rampa.solido, rt_rampa, ME.message); %#ok<AGROW>
+            mancanti{end+1} = sprintf('%s (%s): %s', cat.rampa.solido, rt_rampa, ME.message); 
         end
     end
 end
@@ -198,11 +177,6 @@ for i = 1:numel(tutti_gli_elementi)
     end
 end
 
-%% 5b. Cosa non si e' potuto applicare: si dice SEMPRE, non solo con verbose
-% Uno spostamento richiesto e non applicato su un elemento ATTIVO e' un errore:
-% la campagna girerebbe su un terreno diverso da quello dichiarato, e il
-% terreno "ereditato" e' gia' costato una campagna. Per gli elementi spenti
-% basta un avviso.
 if ~isempty(mancanti)
     attivi_mancanti = false;
     for i = 1:numel(elementi_attivi)
@@ -255,10 +229,6 @@ for p = [ph.LConn ph.RConn]
     if l <= 0, continue; end
     h = [get_param(l,'SrcBlockHandle'), reshape(get_param(l,'DstBlockHandle'),1,[])];
     for b = h(h > 0 & h ~= hs)
-        % I nomi lunghi Simulink li spezza su due righe, e l'a capo resta DENTRO
-        % il nome: il blocco si chiama "Rigid<a capo>Transform10", e anche il
-        % ReferenceBlock ha gli a capo. Confrontato con 'Rigid Transform' non
-        % corrispondeva mai. Si normalizzano gli spazi prima di confrontare.
         ref = regexprep(get_param(b, 'ReferenceBlock'), '\s+', ' ');
         nm  = regexprep(get_param(b, 'Name'),           '\s+', ' ');
         if contains(ref, 'Rigid Transform') || startsWith(nm, 'Rigid Transform')
@@ -271,12 +241,6 @@ end
 
 function t = posa_rampa(gradi, x_e, z_e)
 %POSA_RAMPA  Offset del Rigid Transform perche' la rampa esca dal pavimento in x_e.
-% Il solido e' il cubo 8 x 8 x 0.1: faccia superiore a z locale +0.05. Il
-% punto (-0.5, 0, 0.05) di quella faccia viene messo in (x_e, 0, z_e): davanti
-% restano 4.5 m di rampa, dietro 3.5 m interrati (solo estetica).
-% Solido sulla porta B: nel mondo ha rotazione R' e posizione p = -R'*t,
-% quindi t = -R*p.   [VERIFICATO] a 8, 20 e 40 gradi la superficie esce dal
-% pavimento a x_e con la pendenza richiesta.
 a  = deg2rad(gradi);
 Ry = @(q) [cos(q) 0 sin(q); 0 1 0; -sin(q) 0 cos(q)];
 p  = [x_e; 0; z_e] - Ry(-a) * [-0.5; 0; 0.05];
@@ -285,7 +249,6 @@ end
 
 function f = scrivi_dosso(G, larghezza)
 %SCRIVI_DOSSO  STL del prisma a dosso, estruso in y su +-larghezza/2.
-% File generato: sta in .gitignore, si riscrive a ogni applica_terreno('T4D').
 P = G.P;  n = size(P,1);  w = larghezza/2;
 V = [P(:,1) -w*ones(n,1) P(:,2);  P(:,1) w*ones(n,1) P(:,2)];
 F = zeros(0,3);

@@ -1,43 +1,24 @@
 function info = applica_inerzie(mdl, verbose, modo)
-%APPLICA_INERZIE  Mette le inerzie corrette nei 25 solidi del robot, in memoria.
+% APPLICA_INERZIE  Mette le inerzie corrette nei 25 solidi del robot, in memoria.
 %
 %   applica_inerzie                      corregge phantomx_sim_zero
 %   applica_inerzie(mdl)                 corregge un altro modello
 %   info = applica_inerzie(mdl, true)    con riepilogo a schermo
 %   applica_inerzie(mdl, true, 'controlla')   NON scrive: dice solo come stanno
 %
-% PERCHE' ESISTE
-%   [MISURATO 22/9] Nel .slx le inerzie vengono dall'URDF e sono ~1000 volte
+%   Nel .slx le inerzie vengono dall'URDF e sono ~1000 volte
 %   troppo grandi: il corpo (1 kg, 25 x 20 cm) ha 3-6 kg*m^2, come se la sua
 %   massa stesse a 1.7 m dal centro; ogni link delle zampe (24 g, 6-15 cm) ha
 %   5e-3 kg*m^2, come un'asta da mezzo metro. Le masse invece sono giuste.
-%   Effetti misurati (results/prova_inerzie*.csv):
-%     T2 1x C1  - moto quasi identico, tau_max -5%, energia e cot -62%
-%     T6 C1     - beccheggio 45 -> 15 gradi: NON supera piu' la soglia di 30
-%     T6 C2     - tau_max 26.5 -> 9.5 N*m, cot 5.30 -> 1.95
-%     cot C2/C1 - da 1.35 (C2 piu' cara) a 0.68 (C2 piu' economica)
-%   Cioe' le inerzie cambiano le CONCLUSIONI, non solo i valori assoluti.
 %
-% COSA FA E COSA NON FA
 %   Scrive i parametri dei blocchi IN MEMORIA, come applica_terreno: il file
 %   .slx NON viene salvato e i valori originali restano li'. Per tornare
 %   all'originale basta non chiamare questa funzione e ricaricare il modello
-%   (bdclose all; poi il solito startup).
-%   NON chiamare save_system dopo: salverebbe le inerzie corrette nel modello
-%   del collega senza che lui lo sappia.
 %
 % DA DOVE VENGONO I VALORI
 %   phantomx_config: cfg.I_body, I_c1, I_c2, I_thigh, I_tibia; prodotti
 %   d'inerzia a zero. Per il corpo tornano con il conto a mano di un
 %   parallelepipedo da 1 kg e 25 x 20 x 5 cm (I_zz ~ 8.6e-3 kg*m^2).
-%   [DA DECIDERE COL COLLEGA 23/9] se correggere direttamente il .slx: in quel
-%   caso questa funzione diventa inutile e va tolta dagli script.
-%
-% USO NEGLI SCRIPT
-%   applica_terreno('T5', false, mdl);
-%   applica_inerzie(mdl);            % <-- subito dopo il terreno
-%
-% Progetto FSR PhantomX - A. Russo
 
 if nargin < 1 || isempty(mdl),     mdl = 'phantomx_sim_zero'; end
 if nargin < 2 || isempty(verbose), verbose = false; end
@@ -67,11 +48,9 @@ for i = 1:numel(bb)
     end
     S(end+1) = struct('blocco', bb{i}, 'nome', padre, ...
                       'I_ora', get_param(bb{i},'MomentsOfInertia'), ...
-                      'I_giusta', mat2str(In, 6));                     %#ok<AGROW>
+                      'I_giusta', mat2str(In, 6));                    
 end
 
-% La guardia serve: se il collega aggiunge o toglie un link, correggerne 24 su
-% 25 in silenzio sarebbe peggio che non correggerne nessuno.
 if numel(S) ~= 25
     error('applica_inerzie:solidi', ...
         ['Trovati %d solidi del robot, ne attendevo 25 (corpo + 24 link).\n' ...

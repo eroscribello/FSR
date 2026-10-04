@@ -1,40 +1,7 @@
-%% applica_disturbo.m - un impulso laterale sul corpo, in memoria
+%% applica_disturbo.m
 %
-% A COSA SERVE
-%   T7: spinta laterale impulsiva mentre il robot cammina. C1 e' in anello
-%   aperto e C2 corregge solo la quota dei piedi: nessuno dei due ha
-%   retroazione sull'ASSETTO del corpo, quindi nessuno dei due dovrebbe
-%   tornare dov'era. E' l'unica affermazione su C3 che sia strutturale e non
-%   numerica - le altre (coppie, cot) sono cadute o sono al limite del
-%   pavimento di rumore.
+%   T7: spinta laterale impulsiva mentre il robot cammina.
 %
-% PERCHE' UNA FORZA E NON UNA VELOCITA' INIZIALE
-%   [24/9] La prima idea era dare al corpo una velocita' laterale a t = 0 con
-%   lo state target del 6-DOF Joint: niente blocchi, niente cablaggio.
-%   Sbagliata. Con sei zampe comandate in POSIZIONE e i piedi a terra il corpo
-%   e' vincolato: una velocita' imposta e' una condizione iniziale
-%   incompatibile con i vincoli. Il solutore o la annulla al primo passo o
-%   produce un transitorio che non e' l'impulso che volevamo.
-%   Una FORZA invece e' sempre ammissibile: il sistema le risponde con la sua
-%   dinamica, i piedi slittano o no a seconda dell'attrito, e quello che si
-%   misura e' fisica e non un artefatto del solutore.
-%
-% COSA SCRIVE E COSA NO
-%   Aggiunge i blocchi a run-time e NON chiama mai save_system. Il .slx resta
-%   quello che e': basta un bdclose per tornare allo stato iniziale. Vale
-%   anche per phantomx_sim_zero, che e' del collega.
-%
-% USO - PRIMA 'controlla', SEMPRE
-%   clear all; bdclose all; startup_phantomx
-%   applica_disturbo('phantomx_sim_zero', 0, 'controlla')
-%
-%   La modalita' 'controlla' non tocca niente: stampa le porte del 6-DOF Joint
-%   con cosa hanno attaccato, e i parametri del blocco External Force and
-%   Torque letti da una copia usa-e-getta. Serve perche' i nomi dei parametri
-%   Simscape non si indovinano - oggi ci hanno gia' fatto perdere due giri
-%   (MaskType dei giunti, DampingCoefficient contro LowerLimitDamping).
-%
-%   Poi:
 %   applica_disturbo(mdl, impulso)              % [N*s] lungo +y
 %   applica_disturbo(mdl, impulso, 'applica', struct('t0',4,'durata',0.05))
 %
@@ -82,7 +49,7 @@ if strcmpi(modo, 'controlla')
         n = fieldnames(get_param([ad_tmp '/F'], 'DialogParameters'));
         for k = 1:numel(n)
             v = '';
-            try, v = get_param([ad_tmp '/F'], n{k}); end %#ok<TRYNC>
+            try v = get_param([ad_tmp '/F'], n{k}); end %#ok<TRYNC>
             if ~ischar(v), v = '(non testo)'; end
             fprintf('    %-28s = %s\n', n{k}, v);
         end
@@ -91,7 +58,7 @@ if strcmpi(modo, 'controlla')
                 numel(ph2.Inport), numel(ph2.LConn), numel(ph2.RConn));
         bdclose(ad_tmp);
     catch ME
-        try, bdclose(ad_tmp); end %#ok<TRYNC>
+        try bdclose(ad_tmp); end %#ok<TRYNC>
         fprintf(2, '    non leggibile: %s\n', ME.message);
         fprintf(2, '    (la libreria Simscape Multibody si chiama sm_lib: se il\n');
         fprintf(2, '     percorso e'' cambiato, cercalo con  lb = libinfo(...))\n');
@@ -127,7 +94,6 @@ assignin('base', 'dist_ts', timeseries(u, t));
 fprintf('\nDisturbo: %.4f N*s lungo %s a t = %.2f s (%.1f N per %.0f ms)\n', ...
         impulso, opt.asse, opt.t0, F, 1e3*opt.durata);
 
-% Se i blocchi ci sono gia' basta la serie temporale: e' cambiata sopra.
 if getSimulinkBlockHandle(ad_forz) >= 0
     info = struct('modo','applica', 'impulso', impulso, 'F', F, 'opt', opt, ...
                   'nuovo', false);
@@ -135,8 +101,6 @@ if getSimulinkBlockHandle(ad_forz) >= 0
 end
 
 %% ---- il blocco di forza ----
-% [MISURATO 24/9] Nomi letti in modalita' 'controlla', non indovinati:
-%   EnableForceX/Y/Z, ForceResolutionFrame; una sola porta frame (RConn).
 ad_pos = get_param(ad_6dof, 'Position');
 ad_pos = ad_pos + [0 160 0 160];
 
@@ -150,10 +114,6 @@ switch lower(opt.asse)
     otherwise, error('applica_disturbo:asse', 'Asse ''%s'' non previsto.', opt.asse);
 end
 set_param(ad_forz, ad_par, 'on');
-
-% La spinta deve avere direzione FISSA nello spazio, non solidale al corpo:
-% se il robot imbarda, una forza risolta nel frame del corpo cambierebbe
-% direzione durante la prova, e la spazzata confronterebbe disturbi diversi.
 ad_ris = '(non impostato)';
 for c = {'World', 'Base', 'AttachedFrame'}
     try
@@ -166,10 +126,7 @@ for c = {'World', 'Base', 'AttachedFrame'}
 end
 fprintf('  forza risolta nel frame: %s\n', ad_ris);
 
-%% ---- il convertitore: copiato da uno che c'e' gia' ----
-% Copiarlo invece di prenderlo dalla libreria evita di indovinare il percorso
-% (nesl_utility o simscape/Utilities a seconda della versione) e garantisce
-% che sia lo stesso blocco che il modello usa gia' 18 volte.
+%% ---- il convertitore ----
 ad_conv_src = find_system(mdl, 'LookUnderMasks','all', 'FollowLinks','on', ...
                           'MaskType','Simulink-PS Converter');
 if isempty(ad_conv_src)
@@ -205,7 +162,6 @@ if isempty(ad_in_f)
 end
 add_line(ad_pad, ad_ps_out(1), ad_in_f(1), 'autorouting','on');
 
-% Il frame: si dirama dal nodo che il 6-DOF Joint ha gia' verso base_link.
 ad_p6 = get_param(ad_6dof, 'PortHandles');
 try
     add_line(ad_pad, ad_p6.RConn(1), ad_pf.RConn(1), 'autorouting','on');

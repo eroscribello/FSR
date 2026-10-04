@@ -1,12 +1,9 @@
-%% script_T6.m - T6: terreno con sette ostacoli  [impianto SIMSCAPE]
+%% script_T6.m - T6: terreno con ostacoli  [impianto SIMSCAPE]
 %
-% E' script_T5 applicato a T6: stesso metodo, stesse metriche, stesse guardie.
+% Il robot incontra prima una scalinata composta da 3 gradini in salita e 2
+% in discesa, poi un gradino solo sul lato sinistro del corpo e due sul
+% lato destro. 
 %
-% NOTA MODIFICA: Il troncamento della run al raggiungimento di x_fine e al
-% superamento del bordo del pavimento e' stato disabilitato per garantire che
-% la simulazione e le metriche durino SEMPRE i 25 secondi completi.
-%
-% Progetto FSR PhantomX - A. Russo
 t6_cfg       = phantomx_config();
 
 t6_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
@@ -23,15 +20,13 @@ end
 applica_terreno('T6', false, t6_mdl);
 applica_inerzie(t6_mdl);
 allinea_stimatore(t6_mdl);
-% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t6_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+if strcmp(t6_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t6_info.carico, commenta_carico(t6_mdl, 'off'); else, commenta_carico(t6_mdl); end
 end
 
 fprintf('\nT6: controllore %s, sette ostacoli, %g s a velocita'' nominale\n', ...
         t6_ctrl, t6_dur);
-OVERRIDE_C2 = t6_c2;                                           %#ok<NASGU>
+OVERRIDE_C2 = t6_c2;                                           
 clear OVERRIDE_GAIT                                            % andatura nominale
 init_gait
 t6_out = sim(t6_mdl, 'StopTime', num2str(t6_dur));
@@ -42,7 +37,6 @@ clear OVERRIDE_C2
 init_gait                                                      % ripristina cfg
 
 %% ---- verifica bordo del pavimento (TRONCAMENTO DISABILITATO) ----
-% Registriamo se un piede supera il bordo (x > 3.95m) senza troncare la run.
 t6_t_bordo = NaN;
 if isfield(t6_run,'pf') && ~isempty(t6_run.pf)
     k_bordo = find(any(t6_run.pf(:, 1:3:18) > (4 - 0.05), 2), 1, 'first');
@@ -54,7 +48,6 @@ if isfield(t6_run,'pf') && ~isempty(t6_run.pf)
 end
 
 %% ---- verifica x comune (TRONCAMENTO DISABILITATO) ----
-% Registriamo il tempo d'arrivo a x_fine senza troncare la run.
 t6_xfine = t6_cfg.terreno.T6_x_fine;
 t6_kf = find(t6_run.p(:,1) >= t6_xfine, 1, 'first');
 t6_arrivato = ~isempty(t6_kf);

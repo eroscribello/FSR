@@ -1,39 +1,12 @@
 %% script_T4.m - T4: salita su rampa non modellata  [impianto SIMSCAPE]
 %
-% COSA MISURA
 %   Il robot cammina dritto a velocita' nominale e incontra una rampa di 8
 %   gradi che il generatore di traiettoria non conosce. C1 continua a mettere
-%   i piedi alla quota del piano; C2 dovrebbe trovare il terreno. A differenza
-%   di T5 e T6 la rampa non finisce entro la run: non si misura un passaggio
-%   ma un REGIME IN SALITA, confrontato col regime in piano della stessa run.
-%
-% LA RAMPA (verificata il 22/9, vedi phantomx_config)
-%   Superficie dei piedi dal pavimento a x ~ 0.66 m, poi sale di 8 gradi fino
-%   a oltre la fine del pavimento. A velocita' nominale il robot la raggiunge
-%   verso i 4.5 s, dopo il transitorio, e in 20 s non arriva in cima.
-%
-% COME SI TROVA LA RAMPA, SENZA SAPERE DOVE STA
-%   Come in T5: un piede FERMO nel mondo (appoggio cinematico, non dai
-%   sensori, che vedono solo il pavimento) e piu' alto del pavimento di almeno
-%   t4_soglia_su e' un piede sulla rampa.
-%
-%   [DIVERSO DA T5] La quota del pavimento non e' la mediana degli appoggi: in
-%   T4 piu' di meta' degli appoggi sta sulla rampa, e la mediana cadrebbe li'.
-%   Si usa il 10 percentile: gli appoggi in piano sono il ~20% del totale e
-%   sono i piu' bassi.
-%
-% TRE FINESTRE, DICHIARATE PRIMA DI GUARDARE I DATI
-%   piano        [2 cicli,  primo piede sulla rampa - T/2]
-%   transizione  [primo piede sulla rampa - T/2,  ultima zampa sulla rampa + T]
-%   rampa        [ultima zampa sulla rampa + T,  fine]
-%   "ultima zampa sulla rampa" = l'istante in cui anche la sesta zampa ha fatto
-%   il suo primo appoggio sulla rampa. Da li' in poi il robot e' tutto in
-%   salita; un ciclo dopo e' a regime.
+%   i piedi alla quota del piano; C2 dovrebbe trovare il terreno.
 %
 % METRICHE
 %   pendenza_mis   pendenza della superficie ricavata dagli appoggi (retta z-x
-%                  dei piedi fermi sulla rampa). Deve tornare 8 gradi: e' la
-%                  verifica indipendente della posa impostata in cfg.
+%                  dei piedi fermi sulla rampa). 
 %   incl_err       inclinazione media del corpo sulla rampa, tolto l'offset in
 %                  piano, meno la pendenza. 0 = corpo parallelo alla rampa.
 %                  Positivo = muso piu' alto della rampa.
@@ -47,40 +20,17 @@
 %                  non rallenta il robot.
 %
 %   Segno dell'inclinazione: adatta_simscape da' rpy in convenzione ZYX, dove
-%   il muso in su e' beccheggio NEGATIVO. Qui incl = -pitch. Se in salita il
-%   segno esce opposto alla pendenza, lo script lo dice invece di scrivere
-%   un numero con il segno sbagliato.
+%   il muso in su e' beccheggio NEGATIVO. Qui incl = -pitch. 
 %
-% SALITA RIUSCITA - criterio dichiarato il 22/9, prima della ricerca del
-% limite (script_T4_limite). Tutte e quattro:
+% SALITA RIUSCITA:
 %   1. tutte e sei le zampe fanno almeno un appoggio sulla rampa;
 %   2. almeno due cicli a regime sulla rampa;
 %   3. v_rapporto >= 0.5: il robot sale almeno a meta' della velocita' in piano;
 %   4. assetto entro 30 gradi RISPETTO ALLA RAMPA: rollio rispetto al piano, e
-%      inclinazione rispetto alla pendenza. La soglia e' quella di metriche
-%      (30 gradi), ma metriche la applica al beccheggio ASSOLUTO: su una rampa
-%      di 30 gradi un robot perfettamente allineato risulterebbe "ribaltato".
-%      Per questo in T4 la colonna causa_fallimento di metriche non decide
-%      l'esito; resta in tabella, e sopra i ~20 gradi va ignorata.
+%      inclinazione rispetto alla pendenza.
 % La prima condizione violata va in causa_salita.
-%
-% COLONNE DI CONTATTO: come in T5, a NaN se i sensori non chiudono sul peso.
-%
-% USO DA ALTRI SCRIPT (script_T4_limite)
-%   OVERRIDE_T4 = struct('c2',true, 'gradi',20, 'grafico',false);  script_T4
-% Lo struct viene letto e CANCELLATO subito: non sopravvive alla run.
-%
-% ATTENZIONE AI NOMI: init_gait e' uno script e sovrascrive variabili del
-% workspace. Tutte le variabili qui sono prefissate t4_.
-%
-% Progetto FSR PhantomX - A. Russo
 
 t4_cfg        = phantomx_config();
-% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
-% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
-% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
-% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
-% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
 t4_ctrl       = 'C2';      % 'C1' | 'C2' | 'C3'
 t4_dur        = 20;         % [s] ~4.5 s in piano, il resto in salita
 t4_soglia_su  = 0.015;      % [m] appoggio piu' alto del piano = sulla rampa
@@ -88,21 +38,11 @@ t4_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appogg
 t4_gradi      = t4_cfg.terreno.rampa_gradi;
 t4_grafico    = true;
 t4_forzato    = '';        % chi ha scavalcato t4_ctrl, per dirlo a schermo
-% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
-% aprire i file:
-%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
-% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
-% di ogni task, che e' il problema che risolve. In cambio ogni run che la
-% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
-% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
-% Qui OVERRIDE_T4 ha l'ultima parola: e' mirata a questo task, OVERRIDE_CTRL
-% no. Cosi' script_T4_limite non viene dirottato da una variabile globale
-% dimenticata nel workspace.
 if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t4_ctrl = OVERRIDE_CTRL;  t4_forzato = 'OVERRIDE_CTRL';
 end
 if exist('OVERRIDE_T4','var')
-    % [29/9] Interfaccia vecchia, booleana: la usa ancora script_T4_limite.
+    % Interfaccia vecchia, booleana: la usa ancora script_T4_limite.
     % Copre solo C1 e C2; per C3 serve OVERRIDE_T4.ctrl, che ha la precedenza.
     if isfield(OVERRIDE_T4,'c2')
         if OVERRIDE_T4.c2, t4_ctrl = 'C2'; else, t4_ctrl = 'C1'; end
@@ -113,35 +53,27 @@ if exist('OVERRIDE_T4','var')
     end
     if isfield(OVERRIDE_T4,'gradi'),   t4_gradi   = OVERRIDE_T4.gradi;   end
     if isfield(OVERRIDE_T4,'grafico'), t4_grafico = OVERRIDE_T4.grafico; end
-    clear OVERRIDE_T4                  % lo stato residuo e' gia' costato una campagna
+    clear OVERRIDE_T4                  
 end
 if ~isempty(t4_forzato)
     fprintf(2, '  [%s] controllore forzato a %s\n', t4_forzato, t4_ctrl);
 end
 [t4_mdl, t4_c2, t4_info] = scegli_controllore(t4_ctrl);
 
-% Il terreno si fissa qui, non si eredita.
 applica_terreno('T4', false, t4_mdl, struct('rampa_gradi', t4_gradi));
-% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
-% (script_T4_limite chiama questo script, quindi eredita la correzione.)
+
 applica_inerzie(t4_mdl);
-% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
-% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
-% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
-% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
-% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
-% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+
 allinea_stimatore(t4_mdl);
-% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t4_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+
+if strcmp(t4_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t4_info.carico, commenta_carico(t4_mdl, 'off'); else, commenta_carico(t4_mdl); end
 end
 
 fprintf('\nT4: controllore %s, rampa di %g gradi, %g s a velocita'' nominale\n', ...
         t4_ctrl, t4_gradi, t4_dur);
 
-OVERRIDE_C2 = t4_c2;                                           %#ok<NASGU>
+OVERRIDE_C2 = t4_c2;                                          
 clear OVERRIDE_GAIT                                            % andatura nominale
 init_gait
 
@@ -156,7 +88,7 @@ init_gait                                                      % ripristina cfg
 
 t4_riga = metriche(t4_run, t4_cfg, struct('t_regime', 2*t4_cfg.T));
 
-%% ---- le finestre e le metriche di salita ----
+%% ---- finestre e metriche di salita ----
 t4_R = t4_salita(t4_run, t4_soglia_su, t4_v_appoggio, t4_cfg, 2*t4_cfg.T, deg2rad(t4_gradi));
 
 %% ---- colonne di contatto: valgono solo se i sensori vedono tutto il peso ----
@@ -256,9 +188,6 @@ end
 %% ================= helper =================
 function R = t4_salita(r, soglia, v_app, cfg, t_regime, pend_cmd)
 %T4_SALITA  Finestre piano / transizione / rampa, metriche di salita ed esito.
-%   Non si ferma con un errore se la salita fallisce: nella ricerca del limite
-%   il fallimento E' il dato. Le metriche che non si possono calcolare restano
-%   NaN e causa dice perche'.
 T  = cfg.T;
 t  = r.t(:);
 dt = median(diff(t));
@@ -274,8 +203,8 @@ R = struct('t_ini',nan_, 't_tutti',nan_, 'x_ini',nan_, 'z_piano',nan_, ...
     'h_t',nan(size(t)), 'h_piano',nan_, 'dh',nan_, 'v_rapporto',nan_, ...
     'salito',false, 'causa','');
 
-zs_ord  = sort(zf(fermo));                 % 10 percentile senza toolbox:
-R.z_piano = zs_ord(max(1, round(0.10*numel(zs_ord))));   % vedi intestazione
+zs_ord  = sort(zf(fermo));                 
+R.z_piano = zs_ord(max(1, round(0.10*numel(zs_ord))));   
 su = fermo & (zf - R.z_piano > soglia);
 if ~any(su(:))
     R.causa = 'non raggiunge la rampa';
@@ -358,7 +287,7 @@ if nnz(w_rampa) > 1 && nnz(w_piano) > 1
     R.v_rapporto = (vx(w_rampa) / cos(pend)) / vx(w_piano);
 end
 
-% ---- esito: i quattro criteri dell'intestazione, nell'ordine ----
+% ---- esito ----
 rel_trans = incl(w_trans) - R.incl_ref;
 assetto_ko = R.roll_esc_trans > deg2rad(30) || ...
              (any(w_rampa) && R.roll_esc_rampa > deg2rad(30)) || ...
@@ -377,7 +306,7 @@ R.salito = strcmp(R.causa, 'salita riuscita');
 end
 
 function t4_ombra(R)
-%T4_OMBRA  Fasce sulla transizione e sulla rampa. Va chiamata DOPO i plot.
+%T4_OMBRA  Fasce sulla transizione e sulla rampa.
 yl = ylim;
 h1 = patch([R.w_trans(1) R.w_trans(2) R.w_trans(2) R.w_trans(1)], [yl(1) yl(1) yl(2) yl(2)], ...
            [0.92 0.92 0.92], 'EdgeColor','none', 'HandleVisibility','off');

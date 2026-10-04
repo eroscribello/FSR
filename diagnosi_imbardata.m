@@ -1,67 +1,8 @@
 function D = diagnosi_imbardata(mdl)
-%DIAGNOSI_IMBARDATA  Perche' l'imbardata misurata e' il 3% di quella comandata.
+% Misura perche' l'imbardata misurata e' il 3% di quella comandata.
 %
 %   D = diagnosi_imbardata
 %
-% IL FATTO DA SPIEGARE
-%   Comandando +0.1 rad/s, script_T3 misura -0.0047 rad/s: il 5%, e con il
-%   segno che a quel modulo e' rumore. Il robot cammina dritto.
-%
-%   [AGGIORNATO] La misura ora viene da run.w(:,3), la velocita' angolare dal
-%   log, non piu' dall'angolo srotolato: quella vecchia era limitata a
-%   +-pi/durata e non poteva dire niente. Il fatto pero' non cambia -
-%   l'imbardata e' il 5% - quindi non era un artefatto della misura.
-%
-%   Verificato anche che NON e' un problema di verso: invertendo il delta di
-%   tutte e sei le zampe la misura non cambia. Se invertire la causa non
-%   inverte l'effetto, quella non e' la causa.
-%
-% CINQUE RUN CHE SEPARANO LE CAUSE
-%   Ogni riga esclude qualcosa. Non sono cinque tentativi: sono cinque
-%   domande diverse.
-%
-%   1. rettilineo          riferimento. Serve per sapere quanta imbardata
-%                          "parassita" c'e' anche senza comandarla: se a
-%                          yaw = 0 il robot gia' ruota di 0.003 rad/s, le
-%                          celle di T3 non stanno misurando niente.
-%
-%   2. arco 0.1            la cella di adesso, ripetuta per confronto.
-%
-%   3. arco 0.4            LINEARITA'. Se l'imbardata misurata quadruplica,
-%                          il comando funziona ma e' attenuato da un fattore
-%                          costante, e a 0.1 era semplicemente sotto la
-%                          soglia di aderenza. Se resta al 3%, l'attenuazione
-%                          e' proporzionale e la causa e' strutturale.
-%
-%   4. destre specchiate   IL SOSPETTO PRINCIPALE. In inv_kyn la componente
-%                          tangenziale e' moltiplicata per "side", e il
-%                          fattore compare DUE volte (su y_loc e su theta).
-%                          Se il specchiamento tocca anche la rotazione del
-%                          passo, il delta delle tre zampe destre agisce al
-%                          contrario e i due lati si cancellano: il residuo
-%                          che resta e' proprio un pochi-per-cento. Questa
-%                          run inverte il delta solo a destra: se
-%                          l'imbardata salta al valore atteso, la causa e'
-%                          quella e la correzione e' una riga.
-%
-%   5. rotazione sul posto CASO ESATTO. Con v = 0 tutti i sei moduli valgono
-%                          omega*r_offset, quindi il passo condiviso non e'
-%                          piu' un'approssimazione. omega e' scelto per dare
-%                          lo STESSO passo e la stessa velocita' di piede
-%                          della marcia nominale (omega = v_nom/r_offset),
-%                          cosi' l'aderenza e' nelle stesse condizioni.
-%                          Se questa gira e l'arco no, il problema e'
-%                          l'approssimazione sul modulo. Se non gira nemmeno
-%                          questa, non e' cinematica: e' aderenza.
-%
-% PRIMA
-%   Niente. Il prerequisito era abilita_log('on'), ed e' OBSOLETO: le forze di
-%   contatto non sono ottenibili dal modello (Simulink rifiuta
-%   LogSimulationData sui blocchi di contatto) e adatta_simscape le ricostruisce
-%   dalla penetrazione. appoggio_medio e slip_tot ci sono comunque.
-%
-% Progetto FSR PhantomX - A. Russo
-
 if nargin < 1 || isempty(mdl), mdl = 'phantomx_sim_zero'; end
 
 cfg   = phantomx_config();
@@ -122,10 +63,6 @@ for k = 1:size(casi,1)
         if isfield(r,'w') && ~isempty(r.w) && size(r.w,2) >= 3, wz = r.w(:,3); end
         [w_mis, rot_tot] = tasso_imbardata(r.t, r.rpy(:,3), wz);
 
-        % arco e corda sulla STESSA finestra, altrimenti non sono
-        % confrontabili: la corda calcolata sulla run intera includeva il
-        % transitorio e poteva risultare MAGGIORE dell'arco, che e'
-        % geometricamente impossibile.
         i0 = find(sel,1,'first');
         riga = table(string(etich), w, w_mis, ...
                      w_mis / sign0(w), ...
@@ -181,12 +118,6 @@ if ~isnan(i_ret)
     end
 end
 
-% [CORRETTO] IL SEGNO SI GUARDA PRIMA DELLA LINEARITA'.
-% La lettura sotto confrontava solo il MODULO del rapporto, e con due celle ad
-% arco entrambe a segno opposto al comando (-14.7% e -12.1%) ha stampato
-% "costante, proporzionale" senza vedere che il robot girava al contrario.
-% Due celle con lo stesso segno sbagliato e modulo riproducibile non sono
-% rumore: sono un verso invertito.
 if ~isnan(i_a1) && ~isnan(i_a4)
     r1 = D.yaw_mis(i_a1)/D.yaw_cmd(i_a1);
     r4 = D.yaw_mis(i_a4)/D.yaw_cmd(i_a4);

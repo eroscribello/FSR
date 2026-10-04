@@ -1,119 +1,40 @@
 %% script_T5.m - T5: ostacolo singolo non modellato  [impianto SIMSCAPE]
 %
-% COSA MISURA
-%   Lo scenario centrale di Arrigoni et al.: il terreno e' IGNOTO al
-%   controllore. Il robot cammina dritto a velocita' nominale e incontra un
-%   ostacolo che il generatore di traiettoria non conosce. C1 lo subisce, C2
-%   dovrebbe adattare la quota delle zampe con la ricerca del terreno. La
-%   quantita' su cui l'articolo misura il guadagno e' l'ASSETTO del corpo
-%   durante il passaggio.
+%   Misura terreno ignoto al controllore. Il robot cammina dritto a velocita' nominale 
+%   e incontra un ostacolo che il generatore di traiettoria non conosce. 
 %
-% COME SI TROVA IL PASSAGGIO, SENZA SAPERE DOVE STA L'OSTACOLO
-%   La posizione dell'ostacolo e' scritta dentro la sua mesh, non in cfg.
-%   Invece di ricavarla dalla geometria, lo script la ricava dall'EVENTO: un
-%   piede FERMO nel mondo (in appoggio) e piu' alto del pavimento di almeno
-%   t5_soglia_su e' un piede sull'ostacolo.
-%
-%   [CORRETTO] L'APPOGGIO E' CINEMATICO, NON DAI SENSORI. La prima versione
-%   usava run.contact, cioe' i sensori di forza: ma i sensori del modello
-%   misurano SOLO il contatto col pavimento. Un piede sull'ostacolo e' carico
-%   e il sensore segna zero - verificato: nel passaggio la forza misurata va a
-%   zero per oltre un secondo mentre i piedi stanno fermi a 25-45 mm. Lo script
-%   si fermava dicendo "ostacolo non incontrato" con il robot sopra.
-%   Un piede in appoggio e' fermo rispetto al mondo, su qualunque superficie:
-%   velocita' sotto t5_v_appoggio, per almeno un quarto dell'appoggio nominale.
-%   Non dipende da quali contatti il modello misura.
-%
-%   Il passaggio e' definito dal piede, non dall'effetto sul corpo: se si
-%   definisse la finestra da dove l'assetto si scompone, si misurerebbe il
-%   beccheggio dove il beccheggio e' grande, e il risultato sarebbe circolare.
-%
-%   Due guardie vengono da qui:
+%   Controlli:
 %     - nessun piede fermo sopra il pavimento -> l'ostacolo non e' stato
 %       incontrato (fuori traiettoria, o durata troppo corta): errore;
 %     - ultimo piede sull'ostacolo a meno di un ciclo dalla fine -> la run e'
 %       finita col robot ancora sopra: avviso, e superato = false.
 %
-% COLONNE DI CONTATTO: VUOTE SE I SENSORI NON VEDONO TUTTO IL PESO
-%   Per la stessa ragione, metriche calcola appoggio_medio, sotto3_frac,
-%   slip_tot, disp_carico... da forze che sull'ostacolo mancano. Lo script
-%   controlla la chiusura sul peso (forza media misurata / peso) e, se si
-%   scosta oltre il 5%, mette quelle colonne a NaN invece di scrivere numeri
-%   sbagliati. L'assetto, che e' la metrica di T5, viene dalla posa del corpo
-%   e non ne risente.
-%
-% FINESTRA
-%   [primo appoggio sull'ostacolo - T/2,  ultimo appoggio + T]
-%   Mezzo ciclo prima per prendere un eventuale urto dello swing contro il
-%   bordo (un piede che sbatte di lato tocca in basso e non viene riconosciuto
-%   come "sopra"), un ciclo dopo per l'assestamento. Scelta dichiarata qui,
-%   prima di guardare i dati.
-%
-% ASSETTO: ESCURSIONE RISPETTO AL PIANO, NON VALORE ASSOLUTO
-%   C2 ha un beccheggio di fondo di ~0.035 rad anche su terreno piano, quasi
-%   costante (T2 e T3). Il massimo assoluto nella finestra lo conterrebbe, e C2
-%   risulterebbe peggio di C1 per un offset che con l'ostacolo non c'entra. La
-%   metrica principale e' quindi l'ESCURSIONE: max |angolo - media in piano|,
-%   con la media presa sul tratto piano a regime FUORI dalla finestra - prima
-%   o dopo l'ostacolo. I valori assoluti restano in tabella accanto.
-%
-%   [CORRETTO] La prima versione prendeva solo il tratto PRIMA dell'ostacolo.
-%   Ma l'ostacolo di T5 sta a 16 cm dalla partenza e il robot ci arriva a
-%   1.2 s, prima della fine del transitorio (2 s): quel tratto non esiste, e
-%   l'escursione usciva NaN. Il riferimento serve a togliere l'offset di
-%   assetto in piano, che non dipende da quando lo si misura: dopo l'ostacolo
-%   ci sono undici secondi di marcia regolare.
-%
-% ATTENZIONE AI NOMI: init_gait e' uno script e sovrascrive variabili del
-% workspace. Tutte le variabili qui sono prefissate t5_.
-%
-% Progetto FSR PhantomX - A. Russo
-
 t5_cfg       = phantomx_config();
-% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
-% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
-% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
-% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
-% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
 t5_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
 t5_dur       = 20;          % [s] a 1.0x sono ~2.8 m: abbondante per superarlo
 t5_soglia_su = 0.015;       % [m] appoggio piu' alto del piano = sull'ostacolo
 t5_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
-                            %       (lo swing va a ~0.24 m/s di media)
-% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
-% aprire i file:
-%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
-% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
-% di ogni task, che e' il problema che risolve. In cambio ogni run che la
-% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
-% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+
 if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t5_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t5_ctrl);
 end
 [t5_mdl, t5_c2, t5_info] = scegli_controllore(t5_ctrl);
 
-% Il terreno si fissa qui, non si eredita.
 applica_terreno('T5', false, t5_mdl);
-% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+
 applica_inerzie(t5_mdl);
-% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
-% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
-% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
-% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
-% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
-% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+
 allinea_stimatore(t5_mdl);
-% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t5_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+
+if strcmp(t5_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t5_info.carico, commenta_carico(t5_mdl, 'off'); else, commenta_carico(t5_mdl); end
 end
 
 fprintf('\nT5: controllore %s, ostacolo singolo, %g s a velocita'' nominale\n', ...
         t5_ctrl, t5_dur);
 
-OVERRIDE_C2 = t5_c2;                                           %#ok<NASGU>
+OVERRIDE_C2 = t5_c2;                                           
 clear OVERRIDE_GAIT                                            % andatura nominale
 init_gait
 
@@ -202,13 +123,11 @@ plot(t5_run.t, 1e3*(t5_run.pf(:,3:3:18) - t5_P.z_piano));
 yline(1e3*t5_soglia_su, 'k:');
 t5_ombra(t5_P);
 xlabel('t [s]'); ylabel('z piedi - piano [mm]');
-salva_grafico(sprintf('T5_%s', t5_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
+salva_grafico(sprintf('T5_%s', t5_ctrl));   
 
 %% ================= helper =================
 function P = t5_passaggio(r, soglia, v_app, cfg, t_regime)
 %T5_PASSAGGIO  Finestra del passaggio sull'ostacolo, ricavata dai piedi.
-%   L'appoggio e' CINEMATICO: piede fermo nel mondo. Non si usano i sensori,
-%   che vedono solo il pavimento.
 T = cfg.T;
 if ~isfield(r,'pf') || isempty(r.pf)
     error('script_T5:dati', 'Serve la posizione dei piedi (run.pf).');
@@ -222,8 +141,6 @@ for i = 1:6
     c = 3*(i-1) + (1:3);
     v = vecnorm(gradient(r.pf(:,c).', dt).', 2, 2);
     g = v < v_app;
-    % scarta i tratti fermi troppo brevi: agli estremi dello swing il piede
-    % rallenta per un istante senza essere appoggiato
     ini = find(diff([false; g]) ==  1);
     fin = find(diff([g; false]) == -1);
     for k = 1:numel(ini)
@@ -262,9 +179,6 @@ P.z_piano = z_piano;
 P.altezza = median(zf(su) - z_piano);
 P.z_pp    = max(r.p(fin,3)) - min(r.p(fin,3));
 
-% appoggi sull'ostacolo per zampa, e quali. I nomi vengono da
-% cfg.legNamesCAN: le colonne di pf sono in ordine CAN, che NON e' quello dei
-% To Workspace (adatta_simscape riordina).
 nomi = cfg.legNamesCAN;
 n = zeros(1,6);
 for i = 1:6

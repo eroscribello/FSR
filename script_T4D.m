@@ -1,20 +1,13 @@
 %% script_T4D.m - T4D: dosso (salita, cima, discesa) non modellato  [impianto SIMSCAPE]
 %
-% COSA MISURA
-%   Il comportamento in DISCESA, che T4 non vede. Il robot sale una rampa di
+%   Misura il comportamento in DISCESA, che T4 non vede. Il robot sale una rampa di
 %   8 gradi (la stessa di T4), percorre una cima piana, scende di 8 gradi e
-%   torna in piano. Dosso alto 14 cm (cfg.terreno.dosso). Nessun controllore conosce il terreno.
-%   La discesa e' il caso per cui la ricerca del terreno del paper esiste: il
-%   terreno si allontana dal piede, C1 lo appoggia alla quota prevista e la
-%   zampa resta APPESA; C2 dovrebbe continuare a scendere finche' tocca.
+%   torna in piano. Dosso alto 14 cm. 
 %
-% LA GEOMETRIA E' NOTA ALLO SCRIPT, NON AI CONTROLLORI
 %   Il dosso e' scritto da applica_terreno('T4D') a partire da dosso_profilo,
-%   la stessa funzione che qui da' le quote. Le finestre si ricavano quindi
-%   dalla POSIZIONE DEI PIEDI rispetto agli spigoli, non da cio' che fa il
-%   corpo: niente circolarita'.
+%   la stessa funzione che qui da' le quote. 
 %
-% FINESTRE (dichiarate prima di guardare i dati)
+% FINESTRE
 %   Con xmin, xmax = piede piu' arretrato e piu' avanzato:
 %     tratti    tutto il robot sullo stesso tratto
 %               piano_prima  xmax < x0            (e t >= 2 cicli)
@@ -26,7 +19,7 @@
 %               piede_salita (x0, concavo)   inizio_cima    (x1, convesso)
 %               inizio_discesa (x2, convesso) fondo_discesa (x3, concavo)
 %   Gli spigoli convessi (x1, x2) sono quelli in cui il terreno si abbassa
-%   sotto i piedi anteriori: e' li' che C1 dovrebbe lasciare zampe appese.
+%   sotto i piedi anteriori.
 %
 % METRICHE PER FINESTRA
 %   roll_esc      max |rollio - rollio medio in piano_prima|
@@ -46,62 +39,31 @@
 % ESITO
 %   attraversato = il piede piu' arretrato supera il fondo della discesa almeno
 %   un ciclo prima della fine, e l'assetto resta entro 30 gradi rispetto
-%   all'atteso (rollio e inclinazione). Stessa soglia di T4.
+%   all'atteso (rollio e inclinazione).
 %
-% BORDO DEL PAVIMENTO
-%   Il pavimento finisce a x = 4 m (cubo 8 x 8), e a fine run il robot ci
-%   arriva vicino. L'analisi si ferma al primo istante in cui un piede supera
-%   il bordo meno 5 cm: oltre, il robot camminerebbe nel vuoto e le misure non
-%   sarebbero piu' del dosso. La run viene TAGLIATA li' prima di metriche, cosi'
-%   anche tau_max, cot e assetto massimo escludono la caduta. Colonna t_bordo.
-
 % USCITE
 %   results/T4D_<ctrl>.csv           riga di metriche + le colonne chiave
 %   results/T4D_<ctrl>_finestre.csv  una riga per finestra, tutte le metriche
 %   grafici/T4D_<ctrl>.fig          figura, testi e assi modificabili dopo (+ .png)
 %
-% COLONNE DI CONTATTO: come in T4-T6, a NaN se i sensori non chiudono sul peso.
-%
-% ATTENZIONE AI NOMI: variabili prefissate t4d_ (init_gait e' uno script).
-%
-% Progetto FSR PhantomX - A. Russo
 
 t4d_cfg        = phantomx_config();
-% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
-% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
-% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
-% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
-% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
 t4d_ctrl       = 'C2';     % 'C1' | 'C2' | 'C3'
 t4d_dur        = 30;        % [s] fondo della discesa a ~27 s a velocita' nominale
 t4d_v_appoggio = 0.05;      % [m/s] piede piu' lento di cosi' = fermo, in appoggio
-% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
-% aprire i file:
-%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
-% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
-% di ogni task, che e' il problema che risolve. In cambio ogni run che la
-% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
-% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
 if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t4d_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t4d_ctrl);
 end
 [t4d_mdl, t4d_c2, t4d_info] = scegli_controllore(t4d_ctrl);
 
-% Il terreno si fissa qui, non si eredita.
 applica_terreno('T4D', false, t4d_mdl);
-% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+
 applica_inerzie(t4d_mdl);
-% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
-% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
-% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
-% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
-% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
-% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+
 allinea_stimatore(t4d_mdl);
-% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t4d_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+
+if strcmp(t4d_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t4d_info.carico, commenta_carico(t4d_mdl, 'off'); else, commenta_carico(t4d_mdl); end
 end
 t4d_G = dosso_profilo(t4d_cfg.terreno.dosso, t4d_cfg.floor_top);
@@ -110,7 +72,7 @@ fprintf(['\nT4D: controllore %s, dosso %g/%g gradi, H %.0f mm, cima %.2f m, ' ..
          '%g s a velocita'' nominale\n'], t4d_ctrl, t4d_cfg.terreno.dosso.gradi_su, ...
          t4d_cfg.terreno.dosso.gradi_giu, 1e3*t4d_G.H, t4d_cfg.terreno.dosso.L_cima, t4d_dur);
 
-OVERRIDE_C2 = t4d_c2;                                          %#ok<NASGU>
+OVERRIDE_C2 = t4d_c2;                                          
 clear OVERRIDE_GAIT                                            % andatura nominale
 init_gait
 
@@ -124,11 +86,6 @@ t4d_run = adatta_simscape(t4d_out, struct( ...
 clear OVERRIDE_C2
 init_gait                                                      % ripristina cfg
 
-% [CORRETTO 22/9] La run si TAGLIA al bordo del pavimento PRIMA di metriche.
-% La prima versione tagliava solo le finestre: le metriche globali (tau_max,
-% cot, roll_max, pitch_max) contenevano la caduta dal bordo. Con C2, piu'
-% veloce, il robot cadeva negli ultimi 2 s (corpo -95 mm, beccheggio -18 gradi)
-% e tau_max usciva 20 N*m. Si taglia ogni campo con una riga per campione.
 [t4d_run, t4d_t_bordo] = t4d_taglia_bordo(t4d_run, 4 - 0.05);
 if ~isnan(t4d_t_bordo)
     fprintf(2, '  un piede supera il bordo a t = %.2f s: run tagliata li''.\n', t4d_t_bordo);
@@ -217,7 +174,7 @@ plot(t4d_run.t, sum(t4d_S.fermo,2));
 yline(3, 'k:');
 t4d_ombra(t4d_F);
 xlabel('t [s]'); ylabel('piedi fermi');
-salva_grafico(sprintf('T4D_%s', t4d_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
+salva_grafico(sprintf('T4D_%s', t4d_ctrl));   
 
 %% ================= helper =================
 function [F, S] = t4d_finestre(r, G, cfg, v_app, t_regime)
@@ -225,9 +182,7 @@ function [F, S] = t4d_finestre(r, G, cfg, v_app, t_regime)
 T  = cfg.T;
 t  = r.t(:);
 xf = r.pf(:, 1:3:18);   zf = r.pf(:, 3:3:18);
-% analisi fino al bordo del pavimento (vedi intestazione)
-% [ATTENZIONE] non cfg.floor_dim, che vale [4 4 0.05] e non corrisponde alla
-% mesh: il pavimento e' il cubo 8 x 8 di ProvaPianoImperfettoCube.stl, x in [-4, 4].
+% analisi fino al bordo del pavimento
 x_bordo = 4 - 0.05;
 k_bordo = find(any(xf > x_bordo, 2), 1, 'first');
 S.t_bordo = NaN;
@@ -334,7 +289,7 @@ end
 end
 
 function t4d_ombra(F)
-%T4D_OMBRA  Fasce grigie sugli spigoli. Va chiamata DOPO i plot.
+%T4D_OMBRA  Fasce grigie sugli spigoli.
 yl = ylim;
 sp = {'piede_salita','inizio_cima','inizio_discesa','fondo_discesa'};
 col = [0.90 0.90 0.90; 0.80 0.80 0.80; 0.70 0.70 0.70; 0.85 0.85 0.85];

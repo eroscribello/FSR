@@ -1,39 +1,6 @@
-%% estrai_funzioni.m - tira fuori dal .slx il codice dei blocchi MATLAB Function
+%% estrai_funzioni.m 
+% Estrae dal .slx il codice dei blocchi MATLAB Function
 %
-% PERCHE' ESISTE
-%   [25/9] Il .slx e' binario: git ne conserva ogni versione ma non ne mostra
-%   nessuna. Tutta la logica scritta dentro i blocchi MATLAB Function e' quindi
-%   fuori da qualunque diff - lo dice gia' come_funziona_ricerca_terreno.md,
-%   ed e' il motivo per cui la ricerca del terreno e' stata portata fuori in
-%   ricerca_terreno.m.
-%   Ma le versioni PRECEDENTI a quello spostamento hanno la logica ancora
-%   dentro, e oggi ci serve leggerla: il controllo del 15/9 vive in
-%   MATLAB Function2 e MATLAB Function3 del modello di allora.
-%
-%   Questa funzione la estrae in file di testo, uno per blocco. A quel punto
-%   due versioni del modello si confrontano con un diff qualunque, come se il
-%   codice fosse sempre stato in chiaro.
-%
-% SOLO LETTURA sul modello. Scrive solo i file estratti.
-%
-% USO
-%   clear all; bdclose all; startup_phantomx
-%   estrai_funzioni                                  % modello corrente
-%   estrai_funzioni('phantomx_sim_zero', 'oggi')     % con un'etichetta
-%
-%   I file finiscono in  estratti/<etichetta>/<nome blocco>.m
-%
-% COME SI CONFRONTANO DUE VERSIONI
-%   1. nel repo di oggi:      estrai_funzioni('phantomx_sim_zero','oggi')
-%   2. bdclose all            <-- OBBLIGATORIO: due modelli con lo stesso nome
-%                                 non possono stare caricati insieme
-%   3. nella worktree:        estrai_funzioni('phantomx_sim_zero','15set')
-%   4. si copiano le due cartelle nello stesso posto e:
-%        visdiff('estratti/oggi/MATLAB Function2.m', ...
-%                'estratti/15set/MATLAB Function2.m')
-%      oppure un qualunque diff da riga di comando.
-%
-% Progetto FSR PhantomX - A. Russo
 
 function info = estrai_funzioni(mdl, etichetta)
 

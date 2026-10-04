@@ -1,67 +1,5 @@
 function info = verifica_attitude(mdl_c3, mdl_rif)
-%VERIFICA_ATTITUDE  Il modello di C3 regge la catena di misura della campagna?
-%
-% LA DOMANDA
-%   Gli script dei task (script_T2 ... script_T7) sono scritti su
-%   phantomx_sim_zero. Per misurare C3 basta cambiare il nome del modello in
-%   testa, oppure la catena di misura si rompe da qualche parte?
-%
-%   La catena e':
-%       applica_terreno -> applica_inerzie -> allinea_stimatore -> sim
-%           -> adatta_simscape -> metriche -> CSV
-%
-%   Questa funzione NON simula e NON scrive niente: confronta il modello di
-%   C3 con quello di riferimento sui sei punti da cui la catena dipende, e
-%   dice quali reggono.
-%
-% I SEI PUNTI, E COSA SIGNIFICA FALLIRLI - dichiarati qui, prima di lanciare
-%
-%   1. SimscapeLogType
-%      Deve valere 'all'. adatta_simscape prende posa del corpo e i 18 giunti
-%      dal simlog, non dai To Workspace. Se il log e' spento, simlog e'
-%      vuoto e NON esce niente: non una riga parziale, proprio niente.
-%      -> se fallisce: set_param(mdl,'SimscapeLogType','all') negli script.
-%
-%   2. To Workspace
-%      Servono torque_sens (coppia) e Fleg (forze al piede). Sono gli unici
-%      due campi che adatta_simscape NON prende dal simlog.
-%      -> se mancano: la run esce, ma senza tau e senza Fc. Saltano tutte le
-%         metriche di coppia (compresa la fattibilita') e tutte quelle di
-%         contatto. L'assetto no, quello viene dal simlog.
-%
-%   3. Solid con massa e inerzia
-%      applica_inerzie ne corregge 25 su phantomx_sim_zero. Un numero diverso
-%      qui non e' di per se' un errore - il modello puo' avere blocchi in
-%      piu' - ma va capito prima, non dopo.
-%      -> se sono meno: il robot di C3 ha un'inerzia diversa da quello di
-%         C1/C2 e il confronto non e' fra controllori.
-%
-%   4. Il sottosistema con maschera RigidBodyTree (Inverse Dynamics)
-%      E' quello che produce tau_attesa per il flag di contatto.
-%      -> se C'E': C3 usa il flag, e allinea_stimatore va chiamato SEMPRE,
-%         come per C2. E' il difetto che ci e' costato tre giorni.
-%      -> se NON c'e': C3 non usa il rilevamento di contatto. Il difetto non
-%         lo riguarda, ed e' anche la risposta a OVERRIDE_C2 (= false).
-%
-%   5. Chi legge c2_par
-%      c2_par(1) e' l'interruttore vero della ricerca del terreno (init_gait
-%      riga ~232). c2_soglia = inf NON basta a spegnerla.
-%      -> se c2_par e' usato: OVERRIDE_C2 ha effetto anche su C3, e va deciso
-%         se C3 tiene la ricerca del terreno o la sostituisce.
-%
-%   6. InitFcn
-%      Deve chiamare init_gait, altrimenti cfg non viene ricostruita a ogni
-%      sim e gli OVERRIDE_* non arrivano al modello.
-%
-% USO
-%   verifica_attitude
-%   verifica_attitude('phantomx_sim_attitude')
-%   info = verifica_attitude('phantomx_sim_attitude', 'phantomx_sim_zero');
-%
-% NON SALVA NIENTE. Come applica_terreno e applica_inerzie: solo letture e,
-% dove serve, le due funzioni in modo 'controlla', che non scrivono.
-%
-% Progetto FSR PhantomX - A. Russo
+% Verifica se il modello di C3 regge la catena di misura della campagna
 
 if nargin < 1 || isempty(mdl_c3),  mdl_c3  = 'phantomx_sim_attitude'; end
 if nargin < 2 || isempty(mdl_rif), mdl_rif = 'phantomx_sim_zero';     end
@@ -89,7 +27,7 @@ R = struct('punto', {}, 'c3', {}, 'rif', {}, 'esito', {}, 'nota', {});
 %% ---- 1. log di Simscape ----
 v = cell(1,2);
 for k = 1:2
-    try, v{k} = get_param(M{k}, 'SimscapeLogType'); catch, v{k} = '<assente>'; end
+    try v{k} = get_param(M{k}, 'SimscapeLogType'); catch, v{k} = '<assente>'; end
 end
 R(end+1) = va_riga('1. SimscapeLogType', v{1}, v{2}, ...
     strcmp(v{1},'all'), ...
@@ -160,7 +98,7 @@ R(end+1) = va_riga('5. usa c2_par', va_si(usa_c2), ...
 %% ---- 6. InitFcn ----
 f = cell(1,2);
 for k = 1:2
-    try, f{k} = get_param(M{k}, 'InitFcn'); catch, f{k} = ''; end
+    try f{k} = get_param(M{k}, 'InitFcn'); catch, f{k} = ''; end
 end
 ha_ig = contains(f{1}, 'init_gait');
 R(end+1) = va_riga('6. InitFcn chiama init_gait', va_si(ha_ig), ...
@@ -218,8 +156,6 @@ fprintf('      cosi'' com''e'' SOVRASCRIVI results/T*_C2.csv\n');
 fprintf('    - decidere OVERRIDE_C2 per C3 (vedi punto 5)\n');
 fprintf('  ---------------------------------------------------------------\n\n');
 
-% R e' un array di struct: va incapsulato, altrimenti struct() restituisce
-% un array di info invece di una info sola.
 info = struct('modello', mdl_c3, 'riferimento', mdl_rif, ...
               'punti', {R}, 'bloccanti', {blocca}, ...
               'usa_flag_contatto', has(1), 'usa_c2_par', usa_c2);
@@ -251,7 +187,7 @@ b = find_system(mdl, 'LookUnderMasks','all', 'FollowLinks','on', ...
                 'BlockType','ToWorkspace');
 n = {};
 for k = 1:numel(b)
-    try, n{end+1} = get_param(b{k}, 'VariableName'); end %#ok<AGROW,TRYNC>
+    try n{end+1} = get_param(b{k}, 'VariableName'); end %#ok<AGROW,TRYNC>
 end
 n = unique(n);
 end
@@ -264,8 +200,6 @@ try
     if isempty(v), v = Simulink.findVars(mdl); end
     u = {v.Name};
 catch
-    % findVars puo' chiedere una compilazione: si ripiega sul testo dei
-    % parametri, che per un Constant o un Gain basta.
     b = find_system(mdl, 'LookUnderMasks','all', 'FollowLinks','on', 'Type','block');
     for k = 1:numel(b)
         for p = {'Value','Gain','Table'}
@@ -276,8 +210,6 @@ catch
             end
         end
     end
-    % qui u contiene espressioni, non nomi: il confronto per uguaglianza
-    % fallirebbe, quindi si tiene solo chi CONTIENE il nome cercato
     u = u(contains(u, 'c2_par'));
     if ~isempty(u), u = {'c2_par'}; end
 end
@@ -286,8 +218,6 @@ end
 
 function n = va_conta_rbt(mdl)
 %VA_CONTA_RBT  Sottosistemi con parametro di maschera RigidBodyTree.
-%   Stessa ricerca di allinea_stimatore/as_trova_blocco: per parametro, non
-%   per nome, cosi' un blocco rinominato non fa concludere il falso.
 c = find_system(mdl, 'LookUnderMasks','all', 'FollowLinks','on', ...
                 'BlockType','SubSystem');
 n = 0;

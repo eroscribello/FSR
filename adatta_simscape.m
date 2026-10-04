@@ -1,18 +1,18 @@
 function run = adatta_simscape(out, meta, opt)
-%ADATTA_SIMSCAPE  Converte una run di phantomx_sim_zero nella struttura run.
+% Converte una run di phantomx_sim_zero nella struttura run.
 %
 %   run = adatta_simscape                  % legge 'out' dal base workspace
 %   run = adatta_simscape(out)
 %   run = adatta_simscape(out, meta)
 %   run = adatta_simscape(out, meta, opt)
 %
-% USO TIPICO
+% USO
 %   set_param('phantomx_sim_zero','SimscapeLogType','all');
 %   out = sim('phantomx_sim_zero','StopTime','10');
 %   run = adatta_simscape(out, struct('controller','C1','task','T1'));
 %   riga = metriche(run)
 %
-% DA DOVE VIENE OGNI CAMPO
+% PROVENIENZA CAMPI
 %   t, p, v        log di Simscape, primitive Px/Py/Pz del giunto 6-DOF
 %   rpy, w         log di Simscape, primitiva sferica (Q) o Rx/Ry/Rz
 %   q, qd          log di Simscape, giunti j_c1_* j_thigh_* j_tibia_*
@@ -20,26 +20,6 @@ function run = adatta_simscape(out, meta, opt)
 %   Fc, contact    To Workspace  Fleg
 %   pf             cinematica diretta dell'URDF (robotModel) + posa del corpo
 %   contact_sched  ricostruito dal ciclo di andatura e verificato sul contatto
-%
-% TRE COSE CHE QUESTO FILE FA E CHE NON SONO OVVIE
-%
-%   1. RICAMPIONA SU GRIGLIA UNIFORME. Il solutore e' a passo variabile e
-%      infittisce i campioni attorno agli impatti. Tutte le metriche che sono
-%      medie su campioni (zampe a terra, frazione di saturazione, frazione
-%      persa) risulterebbero sbilanciate verso gli istanti di urto. E' lo
-%      stesso errore gia' corretto in analizza_forze.
-%
-%   2. ORDINA LE ZAMPE. Il modello lavora in ordine Mux (RR MR FR RL ML FL),
-%      run_vuoto impone l'ordine CAN (FL FR ML MR RL RR). I vettori a 18
-%      componenti che arrivano dai To Workspace vengono permutati qui, una
-%      volta sola. q e qd no: arrivano dal log per NOME di giunto, quindi
-%      l'ordine e' corretto per costruzione e non passa da nessuna tabella.
-%
-%   3. SI RIFIUTA DI PRODURRE UNA RIGA SE L'IK NON E' COERENTE. Se
-%      l'escursione verticale del piede lungo il passo supera la
-%      penetrazione disponibile, i piedi non possono toccare insieme e ogni
-%      numero della famiglia D descrive un artefatto. Con opt.ignora_ik si
-%      forza, ma la nota finisce in run.meta.note.
 %
 % OPZIONI
 %   .fs         [Hz]  frequenza della griglia uniforme          (200)
@@ -50,8 +30,7 @@ function run = adatta_simscape(out, meta, opt)
 %               'mux' -> vengono permutati   'can' -> gia' a posto  ('mux')
 %   .ignora_ik  produce la run anche se verifica_ik non passa    (false)
 %   .verbose    stampa il riepilogo                             (true)
-%
-% Progetto FSR PhantomX - A. Russo
+
 
 %% ==================== argomenti ====================
 if nargin < 1 || isempty(out)
@@ -80,9 +59,6 @@ manca = {};          % elenco di cosa non si e' potuto riempire
 note  = {};          % avvertenze che finiscono in run.meta.note
 
 %% ==================== guardia sulla coerenza dell'IK ====================
-% Non e' una formalita': tutta la famiglia D presuppone che i sei piedi
-% possano stare a terra insieme. Se l'IK non lo consente, la riga di tabella
-% misura l'errore di cinematica, non il controllore.
 [ik_ok, ik_esc, ik_pen] = guardia_ik(cfg);
 if ~isnan(ik_esc)
     if ~ik_ok
@@ -138,10 +114,6 @@ if isempty(x_b) || isempty(y_b) || isempty(z_b)
 end
 
 %% ---------- il log copre tutta la simulazione? ----------
-% Simscape logga con un buffer circolare: con SimscapeLogLimitData = 'on'
-% conserva solo gli ULTIMI SimscapeLogDataHistory punti. Su una run lunga il
-% log parte a meta' strada e l'inizio del task sparisce, in silenzio. E' il
-% motivo per cui verifica_marcia riportava "regime 5.0 s" su una run da 10.
 t_vero = [];
 for nm = {'Fleg','Fsum','torque_sens','torque_estim','tout'}
     [tv, ~] = daWorkspace(out, nm{1});
@@ -204,8 +176,6 @@ end
 if isempty(w), manca{end+1} = 'w'; end
 
 %% ==================== giunti ====================
-% Presi per NOME dall'URDF: niente tabelle di permutazione, niente ordine
-% Mux. Se un nome non c'e', la colonna resta NaN e si vede.
 [q, qd, nq, diagG] = giunti(simlog, t, cfg);
 if nq == 0
     q = [];  qd = [];  manca{end+1} = 'q, qd';
@@ -217,9 +187,6 @@ if nq < 18 && ~isempty(diagG)
     fprintf(2,'    %s\n', diagG{:});
 end
 
-% Guardia sulle unita': se gli angoli superano i limiti meccanici del giunto
-% non e' il robot ad essere rotto, sono i numeri ad essere in gradi. E' il
-% controllo che avrebbe smascherato subito i 215 m di scivolamento.
 if ~isempty(q)
     lim  = max(abs([cfg.q_min cfg.q_max]));
     qmax = max(abs(q(:)));
@@ -258,8 +225,6 @@ else
 end
 
 %% ==================== posizione dei piedi ====================
-% Calcolata PRIMA delle forze, perche' quando Fleg non e' disponibile le
-% forze si ricostruiscono da qui.
 pf = [];
 if opt.pf
     if ~evalin('base','exist(''robotModel'',''var'')')
@@ -282,44 +247,6 @@ end
 Fc = [];  inContatto = [];
 [tf, F] = daWorkspace(out, 'Fleg');
 if isempty(F) || numel(tf) < 3
-    % ------------------------------------------------------------------
-    % RICOSTRUZIONE DALLA PENETRAZIONE
-    %
-    % Nel modello le forze di contatto NON sono disponibili, in nessuna
-    % delle tre forme in cui le abbiamo cercate:
-    %   - il ramo Fleg/Fsum e' un abbozzo mai finito: i dodici From cercano
-    %     le etichette Force_sens_lf..Force_sens_rr e nel modello non
-    %     esiste alcun Goto che le produca. Un From senza Goto e' risolto
-    %     come costante, da cui l'unico campione che Fleg restituiva;
-    %   - il log di Simscape non contiene i blocchi di contatto: 107 nodi,
-    %     tutti giunti piu' il 6-DOF Joint;
-    %   - LogSimulationData sui blocchi di contatto non si puo' accendere,
-    %     Simulink risponde "does not support logging".
-    %
-    % Si ricostruisce allora la forza normale dalla PENETRAZIONE, con la
-    % stessa legge costitutiva che usa il solutore - il blocco dichiara
-    % NormalForceType = SmoothSpringDamper, NormalStiffness = contact_k,
-    % NormalDamping = contact_c, NormalTransitionRegionWidth = contact_w:
-    %
-    %     delta = max(0, z_terreno - z_piede)
-    %     Fz    = (k*delta + c*d(delta)/dt) * rampa(delta/w)
-    %
-    % La quota del terreno NON viene assunta da cfg: viene RICAVATA
-    % imponendo che la somma delle sei forze valga in media il peso del
-    % robot. Cosi' un eventuale sfasamento costante della catena
-    % cinematica - che la nota su pf dichiara possibile, qualche mm - viene
-    % assorbito invece di propagarsi su tutte le forze.
-    %
-    % COSA QUESTA RICOSTRUZIONE DA' E COSA NO
-    %   da':   Fz per zampa, quindi appoggio_medio, disp_carico,
-    %          Fz_max_norm, e il contatto per slip_tot
-    %   non da': le componenti tangenziali. Fc(:,1:3:18) e Fc(:,2:3:18)
-    %          restano zero, quindi nessuna metrica di attrito.
-    %   assume: equilibrio quasi statico per la taratura della quota. In
-    %          una run con fase di volo prolungata la somma non e' il peso
-    %          e la stima della quota peggiora: il diagnostico sotto lo
-    %          segnala confrontando la forza totale media con il peso.
-    % ------------------------------------------------------------------
     if isempty(pf)
         manca{end+1} = 'Fc, contact (ne'' Fleg ne'' pf: servono gli angoli di giunto e robotModel)';
     else
@@ -351,10 +278,6 @@ elseif size(F,2) == 18
     Fc = interp1(tf, F(:,perm), t, 'linear','extrap');
     inContatto = Fc(:,3:3:18) > opt.soglia_F;
 elseif size(F,2) == 6
-    % Fleg logga il MODULO della forza, non le tre componenti. Su terreno
-    % piatto la normale e' quasi tutta la forza, quindi il modulo e' una
-    % stima per ECCESSO di Fz: buona per il contatto (soglia a 0.5 N),
-    % ottimistica su Fz_max_norm. Va detto, non nascosto.
     if strcmpi(opt.ordine,'can'), col = 1:6; else, col = slotUscita(cfg).'; end
     M  = interp1(tf, F(:,col), t, 'linear','extrap');
     Fc = zeros(numel(t),18);
@@ -368,10 +291,6 @@ end
 %% ==================== contatto schedulato ====================
 sched = [];
 if ~isempty(inContatto)
-    % L'andatura effettiva puo' differire da cfg: la campagna T2 cambia il
-    % periodo con OVERRIDE_GAIT e init_gait lascia il valore vero in gait.
-    % Usare cfg.T qui produceva uno schedule sfasato e quindi distacchi e
-    % frazione_persa senza significato in tutte le celle diverse da 1x.
     andatura = struct('T', cfg.T, 'beta_stance', cfg.beta_stance, 'phase', cfg.phase);
     if evalin('base','exist(''gait'',''var'')')
         g = evalin('base','gait');
@@ -411,11 +330,6 @@ if ~isempty(Fc),         run.Fc  = Fc;  end
 if ~isempty(inContatto), run.contact = inContatto; end
 if ~isempty(sched),      run.contact_sched = sched; end
 
-% L'etichetta del controllore si LEGGE dallo stato del modello, non si
-% assume. Era cablata a 'C1': una run fatta senza impostare OVERRIDE_C2
-% girava in C2 - cfg.c2.attiva ha default true - e finiva in tabella
-% marcata C1. Un'intera campagna puo' essere attribuita al controllore
-% sbagliato senza che nulla lo segnali.
 run.meta.controller = nomeControllore();
 run.meta.terreno    = terrenoAttivo();
 run.meta.task       = 'T1';
@@ -479,9 +393,6 @@ end
 end
 
 function [t, y] = primitiva(L, prim, var, unita)
-%PRIMITIVA  Serie della variabile 'var' dentro la primitiva 'prim'.
-%   Se ce n'e' piu' di una si tiene quella con l'escursione maggiore: fra i
-%   giunti che hanno una Pz, quello del corpo e' l'unico che si muove molto.
 t = [];  y = [];
 for k = 1:numel(L)
     if ~strcmp(L(k).nome, prim), continue; end
@@ -497,23 +408,6 @@ end
 
 function [v, t] = serieSI(s, unita)
 %SERIESI  Valori di una serie del log NELL'UNITA' RICHIESTA.
-%
-%   Due trappole, entrambe gia' costate un giro di debug:
-%
-%   1. values e time sono METODI, non proprieta'. Scrivere s.values(:) non
-%      rimodella: passa ':' come unita' e solleva "Invalid unit". Prima si
-%      assegna, poi si rimodella.
-%
-%   2. values senza argomento restituisce l'unita' di VISUALIZZAZIONE della
-%      variabile, non quella SI. Gli angoli dei giunti escono in GRADI: letti
-%      come radianti davano energia 3463 J, CoT 159 e 215 m di scivolamento
-%      su 1.4 m percorsi. Numeri sbagliati di un fattore 57.3, tutti
-%      plausibili a prima vista.
-%
-%   Chiedere l'unita' esplicitamente non e' solo una conversione: e' un
-%   controllo. Se la variabile non fosse un angolo, 'rad' solleva un errore
-%   invece di restituire un numero credibile e falso. E l'unita' di default
-%   e' una proprieta' del blocco, che chiunque apra il modello puo' cambiare.
 v = [];  t = [];
 try
     v = s.values(unita);
@@ -588,10 +482,6 @@ end
 
 function [q, qd, n, diag] = giunti(simlog, t, cfg)
 %GIUNTI  Angoli e velocita' dei 18 giunti, presi per nome dall'URDF.
-%   L'ordine delle colonne e' quello CAN, tre per zampa: coxa, femore, tibia.
-%   Non passa dalla lista appiattita dei percorsi: scende nell'albero per
-%   nome. La versione precedente cercava i percorsi e restituiva zero giunti
-%   senza dire perche'; qui ogni fallimento finisce in diag.
 suff = struct('FL','lf','FR','rf','ML','lm','MR','rm','RL','lr','RR','rr');
 q  = nan(numel(t), 18);
 qd = nan(numel(t), 18);
@@ -622,7 +512,7 @@ function [tq, qv, tw, wv, msg] = leggiGiunto(simlog, blocco)
 %   blocco.Rz.q   (primitiva rotazionale, il caso di smimport)
 %   blocco.q      (variabile appesa direttamente al blocco)
 tq = [];  qv = [];  tw = [];  wv = [];  msg = '';
-try, ids = simlog.childIds; catch, msg = 'log senza figli'; return; end
+try ids = simlog.childIds; catch, msg = 'log senza figli'; return; end
 if ~any(strcmp(ids, blocco))
     msg = 'blocco assente al primo livello del log';  return
 end
@@ -662,10 +552,6 @@ function terr = terrenoAttivo()
 %TERRENOATTIVO  Il terreno con cui ha girato il modello, dichiarato da
 %               applica_terreno nel base workspace.
 %
-%   Se manca, la run e' stata fatta su un terreno IGNOTO: probabilmente
-%   quello rimasto da una chiamata precedente. E' gia' successo - una
-%   campagna T2 partita su T5, con il gradino - e nei risultati non si
-%   vedeva. Qui si dichiara l'ignoranza invece di lasciarla implicita.
 terr = '?';
 try
     if evalin('base','exist(''TERRENO_ATTIVO'',''var'')')
@@ -683,12 +569,6 @@ end
 
 function nome = nomeControllore()
 %NOMECONTROLLORE  C1 o C2, letto dallo stato con cui ha girato il modello.
-%
-%   La sorgente piu' attendibile e' c2_par, il vettore che init_gait
-%   assembla e che i due blocchi MATLAB Function leggono davvero:
-%   c2_par(1) = 0 significa ricerca del terreno disattivata, cioe' anello
-%   aperto. Se non c'e', si ripiega su cfg.c2.attiva. Se non c'e' nemmeno
-%   quello, si dichiara l'incertezza invece di inventare un'etichetta.
 nome = 'C?';
 try
     if evalin('base','exist(''c2_par'',''var'')')
@@ -717,14 +597,6 @@ end
 
 function [Fz, delta, z_terr, diag] = forzeDaPenetrazione(pf, t, cfg)
 %FORZEDAPENETRAZIONE  Forza normale per zampa dalla quota dei piedi.
-%
-%   La legge e' quella dichiarata dai blocchi Spatial Contact Force del
-%   modello: molla-smorzatore con regione di transizione smussata.
-%
-%   La quota del terreno non e' un dato in ingresso: viene ricavata
-%   imponendo che la somma delle sei forze valga IN MEDIA il peso. E' un
-%   vincolo fisico, non una taratura, e assorbe lo sfasamento costante fra
-%   il frame della cinematica diretta e quello di Simscape.
 
 z = pf(:, 3:3:18);                 % [N x 6] quota dei sei piedi
 k = cfg.contact.k;
@@ -794,15 +666,6 @@ end
 if ~isempty(Y) && size(Y,1) ~= numel(t) && size(Y,2) == numel(t), Y = Y.'; end
 
 % ---- lunghezze incoerenti: un To Workspace in formato Array ----
-% Un To Workspace salvato come 'Array' non porta con se' il tempo, e se ha un
-% suo SampleTime o una Decimation la sua lunghezza NON e' quella di tout.
-% Prima questo caso arrivava fino a interp1, che si fermava con
-%   "X and V must be of the same length"
-% senza dire quale segnale fosse. Qui si ricostruisce una griglia uniforme
-% sull'intervallo della simulazione - che e' esattamente cio' che un
-% To Workspace a passo fisso produce - e si avvisa, perche' se il blocco
-% avesse invece una Decimation non uniforme la ricostruzione sarebbe
-% sbagliata e va messo in formato Timeseries.
 if ~isempty(Y) && size(Y,1) ~= numel(t)
     n = size(Y,1);
     if numel(t) >= 2 && n >= 2
@@ -823,10 +686,6 @@ end
 
 function perm = permutazione(cfg, ordine)
 %PERMUTAZIONE  Indici che portano un 18-vettore del modello in ordine CAN.
-%
-%   I To Workspace stanno a valle dei Mux di USCITA, che nel modello sono
-%   cablati in ordine  lf lm lr rf rm rr  (FL ML RL FR MR RR) - DIVERSO da
-%   quello del Mux di ingresso (RR MR FR RL ML FL). Qui serve il primo.
 if strcmpi(ordine,'can'), perm = 1:18; return; end
 k    = slotUscita(cfg);
 perm = reshape((3*(k-1) + [1 2 3]).', 1, []);
@@ -851,23 +710,6 @@ end
 %% ================================================================
 function [sched, accordo, sfas] = schedula(t, and, reale)
 %SCHEDULA  Appoggio previsto dal ciclo di andatura, allineato sul reale.
-%
-%   'and' porta T, beta_stance e phase EFFETTIVI della run, non quelli di
-%   cfg: con OVERRIDE_GAIT i due possono differire.
-%
-%   L'istante in cui comincia il ciclo rispetto a t = 0 non e' documentato,
-%   e la versione precedente provava solo due ipotesi (appoggio per primo,
-%   volo per primo). Non basta: lo sfasamento reale puo' essere qualunque.
-%   Qui si cerca sulla griglia lo sfasamento che massimizza l'accordo.
-%
-%   ATTENZIONE: si cerca SOLO lo sfasamento, che e' un'incognita di
-%   allineamento. T e beta_stance restano quelli NOMINALI, perche'
-%   contact_sched deve dire cosa il controllore ha COMANDATO. Adattando
-%   anche il duty, frazione_persa verrebbe azzerata per costruzione e la
-%   metrica non misurerebbe piu' nulla.
-%
-%   Se anche con il miglior allineamento l'accordo resta basso, allora non
-%   e' un problema di calcolo: e' il robot che non sta seguendo il comando.
 ns    = 200;
 prove = linspace(0, 1, ns+1);  prove(end) = [];
 best  = -inf;  sched = [];  sfas = 0;

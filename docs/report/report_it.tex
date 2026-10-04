@@ -1,0 +1,1095 @@
+% ===================== preambolo =====================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\sisetup{per-mode=symbol,range-phrase={--},range-units=single}
+\usepackage[hidelinks]{hyperref}
+
+\captionsetup{font=small,labelfont=bf}
+\setlist{itemsep=2pt,parsep=0pt,topsep=4pt}
+
+% --- segnaposto per figure: compila senza immagini e si vede cosa manca ---
+% Uso:  \figph{55mm}{fig:etichetta}{Didascalia}{che cosa deve mostrare}
+\newcommand{\figph}[4]{%
+  \begin{figure}[htbp]
+    \centering
+    \fcolorbox{gray!60}{gray!5}{%
+      \begin{minipage}[c][#1][c]{0.92\linewidth}
+        \centering\ttfamily\footnotesize\color{gray!80!black}
+        [SEGNAPOSTO FIGURA]\\[2pt]
+        #4
+      \end{minipage}}
+    \caption{#3}
+    \label{#2}
+  \end{figure}}
+
+% abbreviazioni dei controllori
+\newcommand{\Co}{\textsf{C1}}
+\newcommand{\Ct}{\textsf{C2}}
+\newcommand{\Cth}{\textsf{C3}}
+
+% =====================================================================
+\title{\textbf{Controllo con interazione col terreno di un robot esapode:\\
+confronto misurato di tre controllori\\ su un impianto di simulazione condiviso}}
+
+% TODO: inserire i nomi veri e le matricole
+\author{[Studente 1] \and [Studente 2]}
+\date{Field and Service Robotics --- A.A. 2025/2026\\
+Universit\`a degli Studi di Napoli Federico II\\[4pt]
+\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Confrontiamo tre controllori per il PhantomX AX Metal Hexapod Mark~II su un
+unico impianto Simscape Multibody ad alta fedelt\`a: un controllore cinematico
+a tripode ad anello aperto (\Co), la retroazione di ricerca del terreno basata
+sulla coppia di Arrigoni et al.~\cite{arrigoni2024} (\Ct) e un anello
+d'assetto aggiunto sopra di essa (\Cth). Ogni controllore aggiunge al
+precedente esattamente un meccanismo, cos\`i che ogni confronto fra controllori
+adiacenti isoli una sola causa.
+
+Il risultato principale del progetto non era nel piano iniziale. Circa met\`a
+del lavoro \`e consistita nel \emph{trovare e correggere due difetti del nostro
+stesso banco di prova}, entrambi capaci di invertire le conclusioni e nessuno
+dei due dichiarato: il robot camminava, l'animazione era plausibile e le
+metriche uscivano. Li riportiamo per intero, insieme alla disciplina di misura
+adottata in seguito --- un rumore di fondo misurato, una soglia di leggibilit\`a
+fissata prima di guardare i dati e ritrattazioni scritte --- che consideriamo il
+contributo pi\`u trasferibile di questo lavoro.
+
+Con quella disciplina applicata, il risultato misurato \`e che la ricerca del
+terreno \emph{costa} assetto dove non c'\`e nulla da cercare e lo \emph{ripaga}
+sulle discontinuit\`a, mentre l'anello d'assetto restituisce quell'assetto e lo
+paga in energia. Nessuno dei due meccanismi cambia la risposta a un impulso
+laterale e nessuno dei tre completa il percorso a sette ostacoli.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{Introduzione}
+\label{sec:intro}
+
+\subsection{La piattaforma e il lavoro di riferimento}
+
+Il PhantomX AX Metal Hexapod Mark~II \`e un robot esapode economico e a
+hardware aperto, con diciotto servomotori Dynamixel AX-12A, tre per zampa
+(coxa, femore, tibia). Nella configurazione standard \`e privo di sensori di
+forza ai piedi e di IMU: l'unica retroazione disponibile dall'hardware \`e la
+posizione e la stima di carico riportate da ciascun servo.
+
+Arrigoni et al.~\cite{arrigoni2024} sfruttano esattamente questo vincolo. Il
+loro contributo \`e un'architettura di retroazione che rileva il contatto
+piede--terreno \emph{dalla sola coppia motrice}, confrontando la coppia
+misurata ai giunti con quella prevista da un modello di dinamica inversa del
+robot, e usa la rilevazione per adattare l'altezza comandata del piede a un
+terreno che il generatore di traiettoria non conosce. L'attrattiva dell'idea
+\`e che compra adattamento al terreno senza aggiungere un solo sensore.
+
+\subsection{Perch\'e abbiamo scelto questo progetto}
+
+Tre ragioni hanno reso questo un progetto finale interessante, e non un
+esercizio di reimplementazione.
+
+\begin{description}[style=nextline,leftmargin=0pt]
+\item[L'affermazione \`e falsificabile, e l'articolo non ne quantifica il prezzo.]
+Il lavoro di riferimento dimostra che la ricerca del terreno migliora il
+comportamento su terreno non modellato. Non riporta quanto costi il meccanismo
+dove non c'\`e terreno da scoprire. Un confronto controllato su terreno
+identico, con un criterio di leggibilit\`a dichiarato, pu\`o rispondere --- e la
+risposta si \`e rivelata essere un costo reale e sistematico
+(Sezione~\ref{sec:results}).
+
+\item[Il rilevatore di contatto \`e un osservatore basato su modello travestito.]
+La flag che muove l'intera architettura \`e
+$\mathrm{OR}_j\left(|\tau_j^{\mathrm{mis}} - \tau_j^{\mathrm{att}}| >
+\sigma_j\right)$, dove $\tau^{\mathrm{att}}$ proviene da un modello di dinamica
+inversa a struttura di corpi rigidi. La sua qualit\`a dipende quindi
+dall'\emph{accuratezza di un modello dinamico}, il che si collega direttamente
+al materiale di modellistica e stima dello stato del corso. Abbiamo scoperto a
+nostre spese quanto direttamente (Sezione~\ref{sec:estimator}).
+
+\item[Un esapode su un impianto condiviso rende pulita l'ablazione.]
+Poich\'e tutti e tre i controllori pilotano lo stesso modello multibody, lo
+stesso terreno, la stessa legge di contatto e lo stesso generatore di andatura,
+ogni confronto fra adiacenti differisce per un solo meccanismo. Questo \`e
+raramente possibile quando si confrontano fra loro controllori pubblicati.
+\end{description}
+
+\subsection{Che cosa sostiene questo report}
+
+\begin{enumerate}
+\item Due difetti del banco di simulazione, trovati, misurati, corretti e
+      documentati, ciascuno dei quali aveva gi\`a prodotto numeri dall'aria
+      pubblicabile ma sbagliati (Sezione~\ref{sec:defects}).
+\item Un protocollo di misura che rende una differenza fra due controllori
+      \emph{dichiarabile o non dichiarabile}, invece che semplicemente
+      osservata (Sezione~\ref{sec:method}).
+\item Un confronto a tre su sette task con quel protocollo applicato
+      (Sezione~\ref{sec:results}).
+\item Una verifica di fattibilit\`a delle coppie comandate rispetto al datasheet
+      del servo reale (Sezione~\ref{sec:feasibility}).
+\end{enumerate}
+
+% =====================================================================
+\section{Impostazione sperimentale}
+\label{sec:setup}
+
+\subsection{L'impianto}
+
+Il robot \`e importato in Simscape Multibody dall'URDF pubblico del pacchetto di
+descrizione del PhantomX: 25 corpi rigidi (tronco pi\`u 24 membri delle zampe),
+18 giunti rotoidali e sei elementi di contatto sferici ai piedi. I giunti sono
+comandati in \emph{posizione}; la coppia di giunto che ne risulta \`e quindi una
+reazione, non un ingresso --- un punto che conta per la
+Sezione~\ref{sec:feasibility}. L'interazione piede--terreno usa una legge di
+contatto a penalit\`a con attrito di Coulomb, tarata in modo che la penetrazione
+statica ($4.3$~mm in appoggio a tripode) stia ben sopra la regione di
+transizione ($2.0$~mm), dove altrimenti la legge di forza sarebbe mal definita.
+
+\figph{60mm}{fig:plant}{L'impianto Simscape Multibody: corpo, sei zampe a tre gradi di libert\`a, elementi di contatto sferici e i terreni usati dalla batteria di task.}{screenshot del modello Simscape / schema a blocchi dell'impianto}
+
+\subsection{I tre controllori}
+
+\begin{table}[htbp]
+\centering
+\caption{I tre controllori. Ciascuno aggiunge un meccanismo al precedente.}
+\label{tab:controllers}
+\small
+\begin{tabular}{@{}llp{85mm}@{}}
+\toprule
+ & \textbf{Impianto} & \textbf{Meccanismo} \\
+\midrule
+\Co  & \texttt{sim\_zero} & Tripode cinematico ad anello aperto. Traiettorie
+  dei piedi generate dai parametri d'andatura, cinematica inversa per zampa,
+  giunti comandati in posizione. Nessuna retroazione di alcun tipo. \\[3pt]
+\Ct  & \texttt{sim\_zero} & \Co{} pi\`u la \emph{ricerca del terreno}: finch\'e
+  una zampa \`e in appoggio e la flag di contatto \`e bassa, l'altezza comandata
+  del piede continua a scendere fino a che il residuo di coppia supera la
+  soglia. \\[3pt]
+\Cth & \texttt{sim\_attitude} & \Ct{} pi\`u un \emph{anello d'assetto}: due
+  regolatori PI discreti su beccheggio e rollio del corpo, le cui uscite sono
+  distribuite sui sei piedi come scostamento additivo di altezza. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'anello d'assetto agisce \emph{in serie, dopo} la ricerca del terreno: legge
+l'altezza del piede gi\`a corretta e vi somma un termine. Lo abbiamo verificato
+leggendo la connettivit\`a dei blocchi dentro il file del modello, non dalla
+documentazione:
+
+\begin{center}
+\texttt{ricerca\_terreno} $\rightarrow z_i \rightarrow \Sigma(+\Delta z_i)
+\rightarrow$ \texttt{Saturation} $\rightarrow$ \texttt{Rate Limiter}
+$\rightarrow$ zampa
+\end{center}
+
+con
+\begin{equation}
+\Delta z = \mathbf{x}\,u_\theta + \mathbf{y}\,u_\phi ,
+\label{eq:dz}
+\end{equation}
+dove $u_\theta$ e $u_\phi$ sono le uscite dei regolatori di beccheggio e rollio
+e $\mathbf{x},\mathbf{y}\in\mathbb{R}^6$ sono i bracci di leva dei sei piedi.
+Il beccheggio usa $P=10$, $I=1$; il rollio $P=5$, $I=0.5$; entrambi sono
+discreti a \SI{1}{\milli\second} con riferimento nullo. Poich\'e \Cth{} contiene
+\Ct{}, il confronto $\Ct\rightarrow\Cth$ isola l'anello d'assetto e
+$\Co\rightarrow\Ct$ isola la ricerca del terreno.
+
+\subsection{Parametri dell'andatura e loro provenienza}
+\label{sec:gait}
+
+Il lavoro di riferimento delega la generazione dell'andatura a NUKE e dichiara
+esplicitamente che non la discuter\`a. I parametri d'andatura andavano quindi
+scelti. Non sono arbitrari: tre su cinque sono fissati da un vincolo misurato,
+e il grado di libert\`a residuo \`e uno solo, perch\'e
+\begin{equation}
+T = \frac{S}{\beta_{\mathrm{app}}\, v_{\mathrm{nom}}} .
+\label{eq:gait}
+\end{equation}
+
+\begin{table}[htbp]
+\centering
+\caption{Parametri dell'andatura e loro provenienza.}
+\label{tab:gait}
+\small
+\begin{tabular}{@{}llp{78mm}@{}}
+\toprule
+\textbf{Parametro} & \textbf{Valore} & \textbf{Origine} \\
+\midrule
+vettore delle fasi & --- &
+  Definizione del tripode alternato: gruppi
+  $\{\mathrm{AS,CD,PS}\}$ e $\{\mathrm{AD,CS,PD}\}$. Non \`e un parametro
+  libero. \\
+$\beta_{\mathrm{app}}$ & $0.50$ &
+  L'unico fattore di servizio che d\`a appoggio continuo su \emph{esattamente}
+  tre zampe. Sotto, esistono istanti con meno di tre piedi a terra (fuori dalla
+  stabilit\`a statica); sopra, compaiono finestre a sei piedi in cui 18 vincoli
+  di posizione agiscono su 6 gradi di libert\`a. \\
+$S$ & \SI{0.06}{\meter} &
+  Limitato dall'estensione della zampa. A met\`a passo la zampa usa l'$80.9\%$
+  di $\ell_f+\ell_t=\SI{0.219}{\meter}$; l'assert interno scatta all'$85\%$,
+  cio\`e a $S=\SI{0.095}{\meter}$. Il limite dell'$85\%$ \`e a sua volta
+  misurato: all'$89\%$ il robot camminava all'indietro. \\
+$H$ & \SI{0.05}{\meter} &
+  $1.5\times$ l'altezza misurata dell'ostacolo (\SI{32.8}{\milli\meter}, letta
+  dalla quota del piede in appoggio nella run a ostacolo singolo, non dalla
+  mesh). \\
+$T$ & \SI{1.00}{\second} &
+  Variabile dipendente, tramite la~\eqref{eq:gait}. D\`a
+  $v_{\mathrm{nom}}=\SI{0.12}{\meter\per\second}$, verificata all'$83\%$
+  dell'inviluppo di stabilit\`a misurato (Sezione~\ref{sec:envelope}). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Il numero di Froude che ne risulta \`e
+$v^2/(g h) = 0.12^2/(9.81\times 0.154) = 0.0095$: le forze inerziali sono
+l'uno percento della gravit\`a. La marcia \`e nettamente quasi-statica, il che
+\`e ci\`o che legittima l'ipotesi di stabilit\`a \emph{statica} su cui \`e
+costruita l'andatura a tripode.
+
+\subsection{Batteria di task}
+
+\begin{table}[htbp]
+\centering
+\caption{I sette task.}
+\label{tab:tasks}
+\small
+\begin{tabular}{@{}llp{80mm}@{}}
+\toprule
+\textbf{ID} & \textbf{Nome} & \textbf{Che cosa sollecita} \\
+\midrule
+T2  & piano, sweep di velocit\`a & Riferimento, e inviluppo di stabilit\`a in
+                          velocit\`a. \\
+T3  & percorso in curva & Comando di imbardata \SI{0.1}{\radian\per\second}. \\
+T4  & rampa di \SI{8}{\degree} & Pendenza continua: assetto del corpo contro
+                          terreno. \\
+T4D & dosso \SI{8}{\degree}/\SI{8}{\degree} & Salita e poi discesa, due
+                          interfacce angolari. \\
+T5  & ostacolo singolo   & Un gradino non modellato, \SI{32.8}{\milli\meter}. \\
+T6  & sette ostacoli     & Discontinuit\`a non modellate ripetute, a mezza
+                          larghezza perch\'e il lato sinistro e il destro siano
+                          sollevati alternativamente. \\
+T7  & impulso laterale   & Gradino di quantit\`a di moto dall'$1\%$ al
+                          $1600\%$ del nominale. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\figph{65mm}{fig:tasks}{Le configurazioni di terreno della batteria di task.}{montaggio dei terreni: piano, rampa, dosso, ostacolo singolo, percorso a sette ostacoli}
+
+% =====================================================================
+\section{Metodo: quando una differenza \`e un risultato?}
+\label{sec:method}
+
+Tre regole, ciascuna adottata dopo averla violata almeno una volta. Le
+consideriamo la parte pi\`u trasferibile di questo lavoro, perch\'e sono ci\`o che
+ha separato i risultati della Sezione~\ref{sec:results} dai numeri in cui
+credevamo prima.
+
+\subsection{Un rumore di fondo misurato, e una soglia di leggibilit\`a}
+\label{sec:noise}
+
+Ogni run \`e ripetuta tre volte con l'altezza di appoggio $z_0$ spostata di
+$\pm\SI{0.2}{\milli\meter}$ --- una quantit\`a che non ha nulla a che vedere con
+il controllore e tutto a che vedere con dove capita che sia il terreno.
+L'escursione che ne risulta per ciascuna metrica \`e il \emph{rumore di fondo}
+di quella metrica, su quel task, per quel controllore.
+
+\begin{quote}
+Una differenza fra due controllori si dichiara solo se \`e almeno
+\textbf{tre volte} il peggiore dei due rumori di fondo.
+\end{quote}
+
+Non \`e una formalit\`a. Applicarla ha eliminato diverse differenze che
+sembravano risultati; applicarla \emph{male} --- con un rumore misurato su un
+controllore diverso --- ci ha fatto credere per un giorno che non fosse
+dichiarabile proprio nulla. Il rumore \`e misurato su quattro task (piano,
+curva, dosso, ostacolo) per tutti e tre i controllori, ciascuno contro s\'e
+stesso.
+
+In tutta la Sezione~\ref{sec:results}, una cifra fra parentesi come
+$(16.3\times)$ \`e il rapporto fra la differenza osservata e quel rumore di
+fondo. Le voci marcate \textsf{n.c.} (non concludente) stanno sotto il
+$3\times$; quelle marcate \textsf{n.m.} non hanno rumore misurato su quel task
+e sono riportate senza verdetto.
+
+\subsection{Il criterio si scrive prima della run}
+
+Ogni script diagnostico del repository porta in intestazione la domanda che
+pone, la soglia che applicher\`a e le conclusioni possibili --- tutto scritto
+prima che i dati esistano. Questo conta perch\'e l'alternativa \`e disponibile e
+allettante: in questo progetto una soglia di leggibilit\`a calibrata dopo aver
+visto i dati avrebbe spostato il limite di stabilit\`a da $1.0\times$ a
+$1.2\times$ a seconda del multiplo scelto.
+
+\subsection{Le ritrattazioni restano scritte}
+
+Ogni affermazione ritirata \`e marcata
+\texttt{[RITRATTATA \textless data\textgreater]} sul posto, con la motivazione.
+Ne abbiamo ritirate almeno cinque nel corso del progetto. In questo lavoro
+un'affermazione sbagliata \`e sopravvissuta tre giorni proprio perch\'e era
+plausibile, e la disciplina esiste per rendere visibile questo, non per
+mettere in ordine.
+
+% =====================================================================
+\section{Due difetti del banco di prova}
+\label{sec:defects}
+
+Il blocco di lavoro singolo pi\`u grande di questo progetto non \`e stato il
+confronto. \`E stato scoprire che il banco con cui stavamo misurando era
+sbagliato in due punti, e che il secondo difetto era \emph{causato dalla
+correzione del primo}.
+
+\subsection{Le inerzie dell'URDF sono sbagliate di circa un fattore mille}
+\label{sec:inertias}
+
+L'impianto prende masse e inerzie da un URDF pubblico. Le masse sono corrette;
+i tensori d'inerzia no. Due argomenti indipendenti, nessuno dei quali dipende
+dal fidarsi di una particolare fonte per il file:
+
+\begin{description}[style=nextline,leftmargin=10pt]
+\item[Raggio d'inerzia.] Da $I = m r^2$, l'inerzia dichiarata del tronco
+colloca la massa del tronco a $r = \SI{1.79}{\meter}$ dal proprio centro. Il
+tronco \`e largo \SI{25}{\centi\meter}. Ogni membro d\`a
+$r = \SI{0.46}{\meter}$; i membri sono lunghi \SIrange{2}{12}{\centi\meter}.
+Letti in $\mathrm{kg}\cdot\mathrm{m}^2$, come lo standard URDF richiede, quei
+numeri descrivono un oggetto che non pu\`o esistere.
+\item[Tutti i 24 membri portano inerzia identica,] allo stesso decimale. Coxa,
+femore e tibia differiscono per forma e lunghezza. \`E un segnaposto, non una
+misura.
+\end{description}
+
+Dividere per $10^3$ riporta tutto nell'intervallo fisicamente plausibile, che
+\`e la firma di un export CAD eseguito con le masse in grammi. L'effetto sulle
+conclusioni, e non solo sui valori, \`e grande: con le inerzie dell'URDF il
+beccheggio di \Co{} su terreno accidentato raggiungeva \SI{45}{\degree}, contro
+\SI{15}{\degree} con quelle corrette, e il rapporto di costo fra \Ct{} e \Co{}
+passava da $1.35$ a $0.68$ --- \emph{cambiava segno}.
+
+\subsection{Correggere il robot ha rotto il rilevatore di contatto}
+\label{sec:estimator}
+
+La flag di contatto di \Ct{} non \`e una soglia sulla coppia misurata. Il
+modello calcola
+\begin{equation}
+\mathrm{contatto} = \bigvee_{j\in\{c,f,t\}}
+\left( \left| \tau_j^{\mathrm{mis}} - \tau_j^{\mathrm{att}} \right| > \sigma_j \right),
+\label{eq:flag}
+\end{equation}
+e $\tau^{\mathrm{att}}$ \`e prodotta da un blocco di dinamica inversa che porta
+un \texttt{rigidBodyTree} importato \emph{dallo stesso URDF}.
+
+Avevamo corretto le inerzie del solo robot simulato. Da quel momento il robot e
+il modello che ne prevedeva la coppia erano due robot diversi, con inerzie
+distanti tre ordini di grandezza. Il residuo
+$|\tau^{\mathrm{mis}} - \tau^{\mathrm{att}}|$ \`e diventato grande
+\emph{sempre}, con o senza contatto, e la flag \`e rimasta alta per oltre il
+$95\%$ della fase di volo. Con la flag bloccata a uno, la ricerca del terreno
+non entra mai nel ramo che fa crescere l'estensione del piede, e il comando
+degenera in una costante.
+
+\begin{quote}
+Per tre giorni \Ct{} non ha cercato il terreno. Nulla lo segnalava: il robot
+camminava, l'animazione era plausibile, le metriche uscivano. Ogni riga \Ct{}
+prodotta in quella finestra descriveva un controllore rotto.
+\end{quote}
+
+\paragraph{Come l'abbiamo misurato.} Una singola run di dieci secondi, in cui
+il log contiene contemporaneamente la coppia misurata, la coppia attesa e la
+\emph{forza normale al piede}. La flag pu\`o allora essere ricalcolata offline
+per qualunque soglia e confrontata con la forza, che \`e la verit\`a di
+riferimento.
+
+\begin{table}[htbp]
+\centering
+\caption{Flag di contatto contro forza misurata al piede, a soglia invariata.
+La seconda riga \`e la diagnosi: una flag sempre alta sbaglia esattamente tante
+volte quanto la nostra, quindi la nostra non portava informazione.}
+\label{tab:estimator}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{stimatore disallineato} & \textbf{allineato} \\
+\midrule
+errore della flag durante l'appoggio      & $7.0\%$ & $\mathbf{0.6\%}$ \\
+errore di una flag \emph{sempre alta}     & $7.0\%$ & $3.2\%$ \\
+la flag porta informazione?               & \textbf{no} & s\`i \\
+voli senza alcun reset della ricerca      & $20/60$ & $2/60$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{La correzione.} Una routine riscrive massa e inerzia di ogni corpo
+dell'albero di corpi rigidi dello stimatore con gli stessi valori corretti
+applicati all'impianto, forza il sottosistema mascherato a rivalutarsi e
+verifica in tre modi successivi --- scrittura, fallback, rilettura --- fermandosi
+con errore se uno qualunque fallisce. Un fallimento silenzioso qui
+ripristinerebbe esattamente il problema che chiude. \`E chiamata subito dopo la
+correzione delle inerzie in ogni script di task, in memoria, senza mai salvare
+il modello.
+
+\subsection{Nuova taratura della soglia di contatto}
+\label{sec:threshold}
+
+Con lo stimatore allineato la flag funziona, ma alla soglia originale
+$[0.04,\,0.1,\,0.1]$ resta comunque alta per oltre il $41.9\%$ del volo, e il
+$39.7\%$ di quello \`e la sola coxa: il suo $p_{90}$ in volo ($0.0421$) si
+sovrappone al suo $p_{10}$ in appoggio ($0.0469$). Questo ha una spiegazione
+fisica --- la coxa ruota attorno all'asse verticale mentre il contatto \`e
+verticale, quindi il contatto non le trasmette quasi nessuna coppia, mentre in
+volo porta tutta l'accelerazione laterale della zampa.
+
+La terna adottata \`e $[0.385,\,0.136,\,0.105]$, che pone la soglia della coxa
+sopra la sua stessa mediana in appoggio, cio\`e la disattiva. \textbf{Questo \`e
+un cambio di regola, non una ritaratura:} la flag diventa un OR su due giunti.
+\`E stata decisa sul percorso a ostacoli, dove l'esito \`e binario e non soggetto
+al rumore di misura, e va dichiarata come nostra scelta: non \`e pi\`u il valore
+presente nell'implementazione di riferimento.
+
+\subsection{Un limitatore di pendenza, e perch\'e sta nell'impianto}
+\label{sec:slew}
+
+Il modello con assetto portava in origine un limitatore di pendenza di
+$\pm\SI{0.3}{\meter\per\second}$ su ciascun comando di altezza del piede, che
+l'impianto ad anello aperto non aveva. \`E un'asimmetria: il limitatore vincola
+\emph{ogni} comando di altezza, compreso quello prodotto dalla ricerca del
+terreno, quindi un confronto \Ct{}--\Cth{} avrebbe confuso l'anello d'assetto
+con il suo stesso limitatore.
+
+Abbiamo quindi messo lo stesso limitatore, a
+$\pm\SI{0.4}{\meter\per\second}$, in entrambi gli impianti. Il valore non \`e
+libero: l'andatura nominale ha un picco di \SI{0.375}{\meter\per\second} di
+velocit\`a verticale del piede, quindi a $\pm0.4$ la marcia nominale resta
+intatta e il limitatore agisce solo sui comandi rapidi --- ricerca del terreno e
+correzioni d'assetto. Abbiamo verificato che le righe \Co{} e il rumore di
+fondo di \Co{} sono identici byte per byte con e senza limitatore su cinque dei
+sette task e sulla cella nominale del sesto.
+
+Si \`e rivelato pi\`u importante del previsto: il limitatore ha eliminato la
+deriva laterale di \Ct{} sul percorso a ostacoli (da $0.296$ a
+\SI{0.104}{\meter}) e un'anomala sensibilit\`a al rumore dell'energia di \Cth{}.
+Un dettaglio implementativo, non un controllore, con effetti pi\`u grandi di
+alcune delle differenze fra controllori.
+
+% =====================================================================
+\section{Risultati}
+\label{sec:results}
+
+Tutte le righe che seguono vengono da un'unica campagna eseguita dopo le
+correzioni della Sezione~\ref{sec:defects}, con il limitatore di pendenza
+presente su tutti e tre gli impianti: sette task $\times$ tre controllori, pi\`u
+un rumore di fondo di quattro task $\times$ tre run $\times$ tre controllori. I
+verdetti in grassetto superano la regola del $3\times$ della
+Sezione~\ref{sec:noise}.
+
+\subsection{Piano e curva: la ricerca del terreno costa assetto}
+
+\begin{table}[htbp]
+\centering
+\caption{Piano (T2) e percorso in curva (T3), velocit\`a nominale. Fra parentesi
+il rapporto sul rumore di fondo; \textsf{n.c.} = sotto il $3\times$.}
+\label{tab:t2t3}
+\small
+\begin{tabular}{@{}lrrrll@{}}
+\toprule
+ & \Co & \Ct & \Cth & $\Co\rightarrow\Ct$ & $\Ct\rightarrow\Cth$ \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{T2 --- piano, velocit\`a nominale}}\\
+beccheggio max [deg]      & 0.514 & 1.95  & 0.356 & \textbf{+279\%} (16.3) & \textbf{$-$82\%} (18.1) \\
+rollio max [deg]          & 0.206 & 0.280 & 0.205 & +36\% (n.c.)           & $-$27\% (n.c.) \\
+costo di trasporto        & 0.888 & 0.865 & 1.11  & $-$3\% (n.c.)          & \textbf{+28\%} (27.7) \\
+energia [J]               & 18.6  & 18.2  & 23.3  & $-$2\% (n.c.)          & \textbf{+28\%} (28.4) \\
+coppia RMS [N\,m]         & 0.400 & 0.403 & 0.372 & +1\% (n.c.)            & \textbf{$-$8\%} (8.0) \\
+coppia di picco [N\,m]    & 1.87  & 2.02  & 2.23  & +8\% (n.c.)            & +11\% (n.c.) \\
+velocit\`a media [m/s]      & 0.135 & 0.136 & 0.135 & \textbf{+1\%} (6.9)    & $-$0\% (n.c.) \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{T3 --- curva, $+0.1$ rad/s}}\\
+beccheggio max [deg]      & 0.579 & 1.85  & 0.392 & \textbf{+219\%} (40.0) & \textbf{$-$79\%} (45.9) \\
+rollio max [deg]          & 0.224 & 0.351 & 0.210 & \textbf{+57\%} (4.6)   & \textbf{$-$40\%} (5.1) \\
+costo di trasporto        & 0.970 & 0.951 & 1.22  & \textbf{$-$2\%} (3.6)  & \textbf{+28\%} (24.3) \\
+energia [J]               & 30.3  & 29.5  & 37.8  & \textbf{$-$3\%} (6.4)  & \textbf{+28\%} (22.5) \\
+coppia RMS [N\,m]         & 0.398 & 0.389 & 0.376 & \textbf{$-$2\%} (7.0)  & \textbf{$-$3\%} (7.3) \\
+coppia di picco [N\,m]    & 1.91  & 2.11  & 2.43  & +10\% (n.c.)           & +15\% (n.c.) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Su un terreno che \`e esattamente quello che il generatore di traiettoria crede
+che sia, la ricerca del terreno rende l'assetto del corpo \emph{peggiore} di un
+fattore tre o quattro, e non compra nulla: energia e costo di trasporto restano
+invariati entro il rumore sul piano e migliorano del due o tre percento in
+curva. Il meccanismo continua a lavorare dove non c'\`e nulla da trovare, e il
+corpo lo paga.
+
+\figph{70mm}{fig:pitch-flat}{Beccheggio del corpo su due cicli d'andatura in piano, per i tre controllori. L'oscillazione di \Ct{} \`e la ricerca del terreno che agisce su un suolo che gi\`a conosce.}{grafico beccheggio vs tempo, T2, tre curve sovrapposte}
+
+\subsection{Discontinuit\`a: la ricerca del terreno ripaga}
+
+\begin{table}[htbp]
+\centering
+\caption{Dosso (T4D) e ostacolo singolo (T5).}
+\label{tab:t4dt5}
+\small
+\begin{tabular}{@{}lrrrll@{}}
+\toprule
+ & \Co & \Ct & \Cth & $\Co\rightarrow\Ct$ & $\Ct\rightarrow\Cth$ \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{T4D --- dosso, \SI{8}{\degree}/\SI{8}{\degree}}}\\
+beccheggio max [deg] & 8.65  & 10.4  & 1.98  & \textbf{+21\%} (19.8)  & \textbf{$-$81\%} (93.8) \\
+rollio max [deg]     & 2.12  & 1.49  & 0.611 & \textbf{$-$30\%} (6.4) & \textbf{$-$59\%} (7.6) \\
+costo di trasporto   & 1.12  & 1.04  & 1.45  & \textbf{$-$7\%} (5.1)  & \textbf{+40\%} (16.8) \\
+energia [J]          & 64.1  & 59.9  & 83.6  & \textbf{$-$7\%} (3.5)  & \textbf{+40\%} (18.8) \\
+velocit\`a media [m/s] & 0.130 & 0.133 & 0.131 & \textbf{+2\%} (3.6)    & \textbf{$-$1\%} (3.0) \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{T5 --- ostacolo singolo, \SI{32.8}{\milli\meter}}}\\
+beccheggio max [deg] & 7.56  & 6.41  & 1.73  & \textbf{$-$15\%} (16.4)& \textbf{$-$73\%} (19.8) \\
+rollio max [deg]     & 4.49  & 2.31  & 1.13  & $-$49\% (n.c.)         & $-$51\% (n.c.) \\
+costo di trasporto   & 1.20  & 1.08  & 1.40  & \textbf{$-$10\%} (5.2) & \textbf{+30\%} (17.1) \\
+energia [J]          & 48.1  & 44.3  & 57.5  & \textbf{$-$8\%} (3.6)  & \textbf{+30\%} (17.2) \\
+coppia RMS [N\,m]    & 0.408 & 0.403 & 0.380 & $-$1\% (n.c.)          & \textbf{$-$6\%} (9.9) \\
+coppia di picco [N\,m] & 4.46 & 8.33 & 4.01  & +87\% (n.c.)           & $-$52\% (n.c.) \\
+ostacolo superato    & s\`i   & s\`i   & s\`i   & uguale                 & uguale \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Qui il quadro si rovescia, ed \`e questo il risultato che riproduce
+l'affermazione del lavoro di riferimento: su una discontinuit\`a la ricerca
+migliora rollio, energia, costo di trasporto e completamento del task. Resta
+una solida eccezione sul dosso: \textbf{il picco di beccheggio \`e peggiore del
+$21\%$}, a un rapporto di $19.8$. Su una pendenza continua la ricerca estende i
+piedi a valle e il corpo segue il gradiente --- si adatta al terreno invece di
+opporvisi.
+
+\figph{70mm}{fig:obstacle}{Assetto del corpo durante il superamento dell'ostacolo (T5). In ombreggiato: la finestra in cui almeno un piede \`e sull'ostacolo, identificata cinematicamente.}{grafico assetto vs tempo su T5, con finestra del passaggio evidenziata}
+
+\subsection{La rampa: a che cosa serve l'anello d'assetto}
+
+\begin{table}[htbp]
+\centering
+\caption{Rampa di \SI{8}{\degree} (T4). Rumore di fondo non misurato su questo
+task; non si emettono verdetti, ma il comportamento \`e qualitativo e
+inequivocabile.}
+\label{tab:t4}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \Co & \Ct & \Cth \\
+\midrule
+assetto del corpo meno angolo della rampa [deg] & 0.106 & 0.259 & $-7.54$ \\
+beccheggio picco-picco sulla rampa [deg]        & 0.994 & 1.97  & 0.839 \\
+rollio sulla rampa [deg]                        & 0.662 & 0.563 & 0.314 \\
+costo di trasporto                              & 1.15  & 1.09  & 1.58 \\
+salita riuscita                                 & s\`i   & s\`i   & s\`i \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Co{} e \Ct{} allineano il corpo alla rampa, entro qualche decimo di grado.
+\Cth{} lo tiene a $7.54^\circ$ dalla rampa, cio\`e entro $0.5^\circ$
+dall'\emph{orizzontale}, che \`e esattamente ci\`o per cui \`e costruito un anello
+con riferimento d'assetto nullo --- ed \`e anche il comportamento che il lavoro
+di riferimento dichiara come proprio obiettivo. Costa il $45\%$ in costo di
+trasporto.
+
+\figph{70mm}{fig:ramp}{Beccheggio del corpo durante la salita della rampa di \SI{8}{\degree}. \Co{} e \Ct{} seguono la pendenza; \Cth{} tiene il tronco orizzontale.}{grafico beccheggio vs tempo su T4, tre curve, con la pendenza della rampa come riferimento}
+
+\subsection{Percorso a ostacoli: il confronto non discrimina}
+
+\begin{table}[htbp]
+\centering
+\caption{Percorso a sette ostacoli (T6). Si riportano solo l'esito binario e la
+sua validit\`a.}
+\label{tab:t6}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \Co & \Ct & \Cth \\
+\midrule
+distanza percorsa [m]        & 2.91  & 3.12  & 2.99 \\
+deriva laterale massima [m]  & 0.067 & 0.104 & 0.058 \\
+percorso superato, valido    & no    & no    & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+``Superato'' vale solo se la deriva laterale massima resta sotto
+\SI{0.183}{\meter}; oltre, il robot pu\`o aver mancato per intero un ostacolo
+invece di scavalcarlo. La soglia viene dalla geometria degli ostacoli, calcolata
+indipendentemente da qualunque controllore.
+
+\textbf{Nessuno dei tre completa il percorso.} Le metriche fini di questo task
+non vanno citate: i tre controllori seguono traiettorie diverse e quindi non
+incontrano gli stessi ostacoli. Su questo task il confronto non separa i
+controllori, e dirlo \`e il risultato.
+
+\subsection{Impulso laterale: una lacuna comune a tutti e tre}
+
+\begin{table}[htbp]
+\centering
+\caption{Deviazione laterale residua dopo un disturbo impulsivo (T7).}
+\label{tab:t7}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \Co & \Ct & \Cth \\
+\midrule
+deviazione residua, impulso $1\times$ [mm]  & 1.34 & 6.04 & 0.164 \\
+deviazione residua, impulso $16\times$ [mm] & 393  & 400  & 392 \\
+recupera a $16\times$                       & no   & no   & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A impulso grande le tre curve coincidono entro il $2\%$: nessuno dei tre
+recupera una frazione misurabile della deviazione. La rilevazione del contatto
+non \`e il meccanismo in gioco --- questa \`e una lacuna architetturale comune a
+tutti e tre, e la motivazione pi\`u chiara per qualunque controllore futuro su
+questa piattaforma.
+
+\subsection{L'inviluppo di stabilit\`a in velocit\`a}
+\label{sec:envelope}
+
+Uno sweep di sei fattori di velocit\`a, giudicato sul rimbalzo del corpo con una
+soglia dichiarata in anticipo, individua l'inviluppo dell'andatura ad anello
+aperto.
+
+\begin{table}[htbp]
+\centering
+\caption{Rimbalzo del corpo contro fattore di velocit\`a comandato, \Co{}. Soglia
+\SI{10}{\milli\meter}, dichiarata prima dello sweep.}
+\label{tab:envelope}
+\small
+\begin{tabular}{@{}lrl@{}}
+\toprule
+\textbf{fattore} & \textbf{rimbalzo [mm]} & \\
+\midrule
+1.00 & 3.2  & punto di lavoro nominale \\
+1.20 & 3.4  & ultima cella con moto del corpo stabile \\
+1.30 & 9.4  & alla soglia \\
+1.40 & 19.7 & fallisce \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\figph{65mm}{fig:envelope}{Sweep di velocit\`a: rimbalzo del corpo e frazione del task contro il fattore di velocit\`a comandato.}{grafico rimbalzo del corpo e frazione del task vs fattore di velocita'}
+
+% =====================================================================
+\section{Fattibilit\`a sugli attuatori reali}
+\label{sec:feasibility}
+
+La campagna gira ad attuatore ideale: il simulatore concede qualunque coppia.
+L'AX-12A stalla a \SI{1.5}{\newton\meter}, e il costruttore raccomanda di
+lavorare a un quinto dello stallo per un moto stabile. Poich\'e i giunti sono
+comandati in posizione, la coppia \`e una reazione e non un ingresso, quindi
+quanto segue misura ci\`o che ciascun controllore \emph{chiede}, non come si
+comporterebbe con i motori veri.
+
+\begin{table}[htbp]
+\centering
+\caption{Coppia comandata contro il limite dell'AX-12A. RMS \`e il giunto pi\`u
+caricato di ciascuna run, come frazione dello stallo; ``picco'' \`e la coppia
+massima come multiplo dello stallo; ``oltre'' \`e la frazione di campioni sopra
+lo stallo.}
+\label{tab:feasibility}
+\small
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+& \multicolumn{3}{c}{RMS / stallo} & \multicolumn{3}{c}{picco / stallo}
+& \multicolumn{3}{c}{campioni oltre} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+task & \Co & \Ct & \Cth & \Co & \Ct & \Cth & \Co & \Ct & \Cth \\
+\midrule
+T2  & 46\% & 44\% & 39\% & 1.2 & 1.3 & 1.5 & 0.40\% & 0.45\% & 0.38\% \\
+T3  & 46\% & 42\% & 39\% & 1.3 & 1.4 & 1.6 & 0.50\% & 0.40\% & 0.43\% \\
+T4  & 44\% & 44\% & 45\% & 1.4 & 2.3 & 1.8 & 0.39\% & 0.49\% & 0.48\% \\
+T4D & 42\% & 42\% & 39\% & 1.7 & 2.7 & 2.1 & 0.45\% & 0.41\% & 0.49\% \\
+T5  & 45\% & 44\% & 40\% & 3.0 & 5.6 & 2.7 & 0.61\% & 0.50\% & 0.51\% \\
+T6  & 42\% & 43\% & 42\% & 5.0 & 4.9 & 2.8 & 0.91\% & 0.67\% & 0.81\% \\
+T7  & 46\% & 44\% & 39\% & 1.2 & 1.3 & 1.5 & 0.41\% & 0.45\% & 0.38\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Due regimi, e vanno letti separatamente:
+
+\begin{itemize}
+\item \textbf{La marcia supera il carico raccomandato.} Il giunto pi\`u caricato
+sta fra il $39\%$ e il $46\%$ dello stallo su ogni task e per ogni controllore
+--- $2.3\times$ il quinto di stallo che il costruttore indica per un moto
+stabile. Resta sotto lo stallo, ma non dentro l'inviluppo raccomandato.
+\item \textbf{I picchi d'urto escono dallo stallo}, fino a $5.0\times$ sul
+percorso a ostacoli, ma su al massimo lo $0.91\%$ dei campioni: sono eventi
+isolati, uno per impatto del piede, di durata dell'ordine delle decine di
+millisecondi.
+\end{itemize}
+
+\Cth{} chiede sistematicamente la coppia continua pi\`u bassa ($39$--$45\%$) e i
+picchi d'urto pi\`u bassi sui task con discontinuit\`a, il che \`e coerente con un
+anello d'assetto che assorbe parte dell'urto nel moto del corpo invece che nei
+giunti.
+
+\figph{65mm}{fig:feasibility}{Coppia comandata contro il limite dell'AX-12A: continua (RMS del giunto peggiore) e di picco, per task e controllore.}{grafico a due pannelli: RMS/limite e picco/limite per task, tre controllori}
+
+% =====================================================================
+\section{Discussione}
+\label{sec:discussion}
+
+\subsection{I due meccanismi fanno cose diverse, e solo uno paga}
+
+Leggere le Tabelle~\ref{tab:t2t3}--\ref{tab:feasibility} lungo i due confronti
+fra adiacenti d\`a un quadro coerente su tutti e sette i task.
+
+\paragraph{La sola ricerca del terreno (\Co$\rightarrow$\Ct) non \`e un
+meccanismo d'assetto.} Sui due task in cui il terreno \`e esattamente quello che
+il generatore di traiettoria assume --- piano (T2) e curva (T3) --- peggiora il
+beccheggio di tre o quattro volte, con un margine da $16$ a $40$ volte il
+rumore di fondo, e non restituisce nulla di misurabile in energia. Sui task con
+terreno reale fa meglio: il rollio migliora del $30\%$ sul dosso e del $49\%$
+sull'ostacolo, il costo di trasporto cala del $7$--$10\%$ e la velocit\`a media
+sale del $2$--$3\%$. Ma il beccheggio, che \`e il grado di libert\`a su cui la
+ricerca agisce, peggiora comunque del $21\%$ sul dosso.
+
+La ragione \`e visibile nel meccanismo pi\`u che nei numeri. La ricerca abbassa
+un piede in volo finch\'e il residuo di coppia non dichiara il contatto; la
+dichiarazione \`e fatta per zampa, in modo asincrono, e la correzione di altezza
+che ne risulta \`e un gradino. Su un terreno che il generatore gi\`a modella
+correttamente i gradini sono spuri, e tre zampe che gradinano a istanti
+leggermente diversi sono esattamente un'eccitazione di beccheggio. Arrigoni et
+al.~\cite{arrigoni2024} introducono il meccanismo per terreno che il robot non
+pu\`o vedere; la nostra misura dice che su terreno che \emph{pu\`o} vedere il
+meccanismo \`e un costo netto, e che quel costo non scompare quando il terreno
+diventa irregolare --- semplicemente gli si affianca un beneficio sugli altri
+assi.
+
+\paragraph{La retroazione d'assetto (\Ct$\rightarrow$\Cth) \`e il meccanismo che
+compra assetto, e lo compra con l'energia.} Il segno \`e lo stesso su ogni task
+e ogni ampiezza supera largamente la regola del $3\times$: beccheggio $-82\%$
+(piano), $-79\%$ (curva), $-81\%$ (dosso), $-73\%$ (ostacolo), con rapporti sul
+rumore da $18$ a $94$. Sulla rampa di $8^\circ$ la differenza \`e qualitativa
+anzich\'e incrementale: \Co{} e \Ct{} portano il tronco parallelo alla rampa
+($0.11^\circ$ e $0.26^\circ$ di angolo corpo-meno-rampa), mentre \Cth{} lo
+tiene entro mezzo grado dall'\emph{orizzontale} ($-7.54^\circ$ di
+corpo-meno-rampa su una pendenza di $8^\circ$). Sono due comportamenti diversi,
+non due qualit\`a dello stesso comportamento, ed \`e per questo che quella riga
+non porta verdetti percentuali.
+
+Il prezzo \`e altrettanto costante: $+28\%$ di energia e costo di trasporto su
+piano e curva, $+40\%$ su dosso e rampa, $+30\%$ sull'ostacolo, tutti da $17$ a
+$28$ volte il rumore di fondo. \`E interessante che la coppia \emph{continua}
+scenda ($-3$ fino a $-8\%$, dichiarabile su cinque task): l'energia in pi\`u \`e
+spesa nella corsa verticale aggiuntiva dei piedi, non nel sostenere carichi di
+giunto maggiori.
+
+\paragraph{La composizione non \`e la somma.} \Cth{} \`e \Ct{} con l'anello
+d'assetto in serie dopo la ricerca del terreno, quindi il $+279\%$ di
+beccheggio della ricerca e il $-82\%$ dell'anello sono misurati sullo stesso
+percorso di segnale. Confrontando i due estremi, \Cth{} finisce \emph{meglio di
+\Co} sul beccheggio ($0.356$ contro $0.514$ deg in piano), cio\`e l'anello
+d'assetto ripaga pi\`u che interamente il disturbo introdotto dalla ricerca. Se
+un controllore fatto di sola retroazione d'assetto \emph{senza} ricerca del
+terreno farebbe ancora meglio \`e l'ablazione successiva ovvia, e non l'abbiamo
+eseguita: l'impianto per farlo non esiste, e costruirlo avrebbe significato
+modificare un modello gi\`a congelato per la campagna.
+
+\subsection{Un risultato sulla composizione stessa: la rilevazione
+dell'appoggio si degrada}
+
+Il risultato architetturale pi\`u chiaro del progetto non era pianificato.
+Quando il task della rampa (T4) \`e stato analizzato su \Cth, il rilevatore
+cinematico di appoggio (Sezione~\ref{sec:setup}) --- un piede \`e in appoggio
+quando la sua velocit\`a nel mondo resta sotto \SI{0.05}{\meter\per\second} per
+almeno un quarto dell'appoggio nominale --- non trovava praticamente alcun
+appoggio. La nostra prima lettura \`e stata che il robot non camminasse. Era
+sbagliata, e vale la pena conservare il perch\'e: la quota media del corpo che
+avevamo citato era l'altezza della rampa stessa, e il conteggio di appoggi dai
+sensori di forza pari a $1.00$ non ha significato su una rampa, perch\'e quei
+sensori vedono solo il piano del pavimento.
+
+La lettura corretta \`e venuta dal contare, per zampa, la frazione di campioni
+sotto soglia e il tratto consecutivo pi\`u lungo:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & campioni sotto \SI{0.05}{\meter\per\second} & tratto consecutivo pi\`u lungo \\
+\midrule
+\Ct  & 41--54\% & 71--113 campioni ($\approx$ un appoggio intero) \\
+\Cth & 4--8\%   & 3--12 campioni \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+I piedi non mancano l'atterraggio: atterrano e poi vengono rimossi. L'anello
+d'assetto aggiunge una correzione continua di altezza
+$\Delta z = x\,u_\theta + y\,u_\phi$ a ogni piede, compresi quelli in appoggio,
+quindi un piede in appoggio non \`e mai fermo nel riferimento mondo.
+L'ampiezza \`e piccola --- con una velocit\`a mediana del piede di
+\SI{0.14}{\meter\per\second} il moto su un appoggio frammentato \`e circa
+\SI{17}{\milli\meter}, contenuto dalla saturazione e dal limitatore di
+pendenza --- quindi l'andatura non ne risente. Ci\`o che si rompe \`e
+l'\emph{osservabilit\`a del contatto da parte di qualunque criterio basato sulla
+quiete}.
+
+Questo conta al di l\`a del nostro banco, perch\'e la ricerca del terreno
+sottostante \`e essa stessa un meccanismo di rilevazione del contatto. Comporre
+un anello d'assetto in serie dopo un meccanismo innescato dal contatto d\`a al
+secondo un mondo in cui nulla \`e mai fermo. La composizione funziona qui perch\'e
+la ricerca del terreno usa un residuo di coppia e non la cinematica del piede,
+e perch\'e la correzione d'assetto \`e limitata in pendenza; non sopravvivrebbe a
+un rilevatore di appoggio costruito sulla velocit\`a del piede. Consideriamo
+questa la cosa pi\`u trasferibile prodotta dal progetto.
+
+\subsection{Che cosa la batteria di task non ha potuto risolvere}
+
+Tre dei sette task non hanno dato verdetto, e dirlo fa parte del risultato.
+
+\begin{itemize}
+\item \textbf{T6 (percorso a sette ostacoli) non discrimina.} Nessuno dei tre
+controllori lo completa: $2.91$, $3.12$, \SI{2.99}{\meter} percorsi, tutti e
+tre sotto la soglia di validit\`a sulla deriva laterale (\SI{0.183}{\meter},
+ricavata dalla geometria del percorso e non dai controllori). Oltre quella
+deriva il robot pu\`o essere passato \emph{a fianco} dell'ostacolo~3 invece che
+sopra, quindi n\'e la distanza n\'e alcuna metrica a valle sono confrontabili: i
+tre controllori non hanno incontrato gli stessi ostacoli. Questo \`e un
+cambiamento rispetto a una campagna precedente, prima che il limitatore di
+pendenza fosse presente su tutti e tre gli impianti, in cui \Ct{} sembrava
+arrivare a \SI{3.71}{\meter} contro \SI{2.44}{\meter} di \Co. Quel titolo \`e
+superato e non va citato.
+
+\item \textbf{T7 (impulso laterale) separa solo alla piccola ampiezza.} A
+$1\times$ la deviazione residua \`e $1.34$, $6.04$, \SI{0.164}{\milli\meter} ---
+un miglioramento del $97\%$ per \Cth{} --- ma il rumore di fondo non \`e stato
+misurato su questo task, quindi non si dichiara alcun verdetto. A $16\times$
+tutti e tre finiscono a $392$--\SI{400}{\milli\meter} e nessuno recupera: il
+disturbo \`e semplicemente pi\`u grande di quanto ciascuno dei tre possa
+reiettare.
+
+\item \textbf{La coppia di picco non supera mai la regola del $3\times$}, su
+nessun task e nessun confronto, nonostante differenze fino al $+87\%$. Il picco
+\`e una statistica a campione singolo di un urto e la sua dispersione fra run \`e
+dello stesso ordine delle differenze fra controllori. La colonna RMS, che \`e un
+integrale, \`e dichiarabile su cinque task. Riportiamo entrambe e traiamo
+conclusioni solo dalla seconda.
+\end{itemize}
+
+% =====================================================================
+\section{Limiti}
+\label{sec:limits}
+
+\begin{description}[style=unboxed,leftmargin=0pt,font=\normalfont\itshape]
+
+\item[Attuatori ideali.] I giunti sono comandati in posizione e il simulatore
+fornisce qualunque coppia il comando richieda. La
+Sezione~\ref{sec:feasibility} misura quindi la \emph{domanda}, non il
+comportamento ottenibile. Una campagna con i limiti di velocit\`a e coppia
+dell'AX-12A nell'anello comprimerebbe probabilmente le differenze, perch\'e
+\Cth{} \`e il controllore che chiede la maggiore corsa aggiuntiva del piede per
+unit\`a di tempo.
+
+\item[I sensori di contatto vedono solo il pavimento.] I sensori di forza
+Simscape sono attaccati al piano del terreno, quindi su rampa, dosso e ostacoli
+non riportano nulla. Ogni metrica dipendente dall'appoggio su T4, T4D, T5 e T6
+viene invece dal rilevatore cinematico --- che, come mostra la
+Sezione~\ref{sec:discussion}, \`e a sua volta degradato su \Cth. Dove i due
+rilevatori sono in disaccordo riportiamo il disaccordo invece di sceglierne
+uno.
+
+\item[I bracci di leva dell'assetto sono cablati.] Le $x$ e $y$ usate in
+$\Delta z = x\,u_\theta + y\,u_\phi$ sono costanti nel modello, circa
+$1.8\times$ pi\`u piccole delle posizioni nominali dei piedi
+\texttt{cfg.pf\_nom}, pur con segni e ordinamento delle zampe corretti. Abbiamo
+scelto di \emph{non} correggerle: i guadagni proporzionali sono stati tarati
+empiricamente con quei valori nell'anello, quindi cambiare i bracci di leva
+senza ritarare cambierebbe il guadagno d'anello dello stesso fattore. La coppia
+(braccio di leva, guadagno) \`e coerente; solo la sua fattorizzazione \`e
+arbitraria.
+
+\item[Lo stimatore di dinamica inversa non \`e l'impianto.] Dopo la correzione
+della Sezione~\ref{sec:estimator} il disallineamento residuo \`e l'\SI{1.6}{\percent}
+di massa nei piedi, che l'albero URDF non porta. La soglia di contatto
+$\sigma_j$ lo assorbe, ma \`e stata tarata su questo banco e andrebbe ritarata
+su un altro.
+
+\item[La soglia \`e autotarata.] $\sigma_j$ \`e stata fissata a partire dal
+residuo osservato durante un volo notoriamente libero su questo impianto. Non
+\`e quindi un parametro indipendente, e alla ricerca del terreno non si pu\`o
+accreditare robustezza rispetto a una soglia su cui \`e stata adattata.
+
+\item[Solo stabilit\`a quasi-statica.] Il numero di Froude della marcia nominale
+\`e $v^2/(gh) = 0.0095$, quindi lo ZMP collassa sulla proiezione a terra del
+centro di massa entro la precisione della misura; l'analisi di stabilit\`a
+assume una zona di contatto planare e riporta l'inclinazione del piano
+d'appoggio, in modo che l'ipotesi possa essere verificata invece che data per
+buona.
+
+\item[Nessun hardware.] Nulla in questo report \`e stato misurato su un PhantomX
+fisico. La piattaforma, l'URDF e il datasheet del servo sono reali; il
+confronto non \`e validato.
+
+\end{description}
+
+% =====================================================================
+\section{Contributi per componente del gruppo}
+\label{sec:contributions}
+
+\noindent\fcolorbox{red!50}{red!3}{\begin{minipage}{0.97\linewidth}
+\small\textbf{DA FARE --- da confermare e completare a cura degli autori prima
+della consegna.} La suddivisione qui sotto riflette la divisione del lavoro
+come \`e effettivamente avvenuta; nomi e qualunque voce che uno dei due voglia
+rivendicare vanno sistemati a mano.
+\end{minipage}}
+
+\vspace{6pt}
+
+\begin{description}[style=unboxed,leftmargin=0pt,font=\normalfont\bfseries]
+
+\item[Studente 1 --- impianto e controllori.]
+Costruzione dell'impianto Simscape Multibody a partire dall'URDF del PhantomX;
+implementazione del generatore a tripode ad anello aperto (\Co);
+implementazione dello strato di ricerca del terreno secondo Arrigoni et al.\
+(\Ct), compresi il residuo di dinamica inversa e la flag di contatto per zampa;
+progetto, implementazione e taratura empirica dell'anello d'assetto (\Cth) ---
+prima il beccheggio, poi il rollio --- e della saturazione e del limitatore di
+pendenza che ne vincolano l'autorit\`a. Proprietà dei modelli Simulink per tutto
+il progetto.
+
+\item[Studente 2 --- misura, diagnosi e analisi.]
+Progetto della batteria di sette task e del protocollo di misura
+(Sezione~\ref{sec:method}), compresi la procedura per il rumore di fondo e la
+regola di dichiarabilit\`a a $3\times$; l'intera campagna di misura e la sua
+automazione (scelta del controllore in un punto unico, esecuzione batch,
+conversione dei risultati, generazione della tabella di confronto);
+individuazione, quantificazione e correzione dei due difetti del banco della
+Sezione~\ref{sec:defects}; la diagnosi sulla rilevazione dell'appoggio della
+Sezione~\ref{sec:discussion}; la verifica di stabilit\`a quasi-statica; l'analisi
+di fattibilit\`a rispetto al datasheet del servo; struttura e documentazione del
+repository.
+
+\item[In comune.]
+Scelta dei tre controllori e della struttura dell'ablazione; ricostruzione e
+giustificazione dei parametri d'andatura (Sezione~\ref{sec:setup});
+interpretazione dei risultati; questo report.
+
+\end{description}
+
+% =====================================================================
+\section{Rapporto con altri corsi e novit\`a}
+\label{sec:novelty}
+
+Questo progetto non deriva da, e non estende, un progetto presentato per un
+altro corso. Il modello della piattaforma, i tre controllori, la batteria di
+task, il protocollo di misura e tutti i risultati qui riportati sono stati
+prodotti per Field and Service Robotics.
+
+Rispetto al materiale del corso il progetto \`e un'applicazione pi\`u che
+un'estensione della teoria, e la sua novit\`a sta in tre punti:
+
+\begin{enumerate}
+\item \textbf{Un'ablazione controllata invece di una dimostrazione.} La forma
+abituale di un progetto di questo tipo \`e: implementare un controllore,
+mostrare che cammina. Qui lo stesso impianto, terreno, legge di contatto e
+generatore d'andatura portano tre controllori che differiscono per esattamente
+un meccanismo ciascuno, quindi ogni confronto isola un meccanismo. \`E quel
+disegno a rendere possibile affermare che la ricerca del terreno costa assetto
+e che la retroazione d'assetto costa energia, invece che affermare che un
+controllore completo \`e migliore di un altro.
+
+\item \textbf{Un criterio di dichiarabilit\`a fissato prima della campagna.} I
+risultati di simulazione sono riproducibili all'ultima cifra se non si perturba
+nulla, il che fa sembrare significativa ogni differenza. Perturbare l'altezza
+iniziale di \SI{\pm 0.2}{\milli\meter} su tre run d\`a un rumore di fondo, e
+richiedere che una differenza superi $3\times$ il peggiore dei due rumori prima
+di dichiararla converte una tabella di numeri in una tabella di affermazioni.
+Circa un terzo delle differenze misurate non sopravvive a quella regola,
+compresi tutti i confronti sulla coppia di picco.
+
+\item \textbf{Due difetti silenziosi del banco, trovati per misura e non per
+ispezione.} Entrambi (Sezione~\ref{sec:defects}) producevano numeri plausibili
+e dall'aria pubblicabile pur essendo sbagliati, e nessuno dei due era visibile
+nello schema a blocchi. Quello del disallineamento dello stimatore in
+particolare \`e un'istanza diretta di ci\`o che il corso dice sui residui basati
+su modello: correggere l'impianto senza correggere il modello che lo prevede \`e
+peggio che non correggere nessuno dei due, perch\'e il residuo satura e la flag
+di contatto degenera in una costante.
+\end{enumerate}
+
+% =====================================================================
+\section{Conclusioni}
+\label{sec:conclusions}
+
+Tre controllori per un esapode PhantomX sono stati confrontati su un unico
+impianto lungo sette task, con un protocollo che dichiara una differenza solo
+quando supera tre volte il rumore di fondo misurato.
+
+\begin{itemize}
+\item La ricerca del terreno di~\cite{arrigoni2024}, presa da sola, \`e un costo
+netto su terreno che il generatore d'andatura gi\`a modella: il beccheggio
+peggiora del $219$--$279\%$ senza alcun ritorno energetico. Su terreno
+irregolare migliora il rollio ($-30$ fino a $-49\%$), il costo di trasporto
+($-7$ fino a $-10\%$) e la velocit\`a ($+2$ fino a $+3\%$), pur continuando a
+peggiorare il beccheggio.
+\item L'anello d'assetto \`e il meccanismo che compra assetto, e lo fa su ogni
+task: beccheggio da $-73$ a $-82\%$ a un rapporto da $18$ a $94$ volte il
+rumore di fondo, e sulla rampa di $8^\circ$ un comportamento qualitativamente
+diverso (tronco tenuto orizzontale invece che parallelo alla pendenza). Costa
+il $28$--$40\%$ in energia e costo di trasporto, speso in corsa dei piedi e non
+in carico ai giunti --- la coppia continua anzi cala.
+\item Composti in serie, i due meccanismi lasciano il corpo migliore del
+riferimento ad anello aperto sul beccheggio, ma rendono il contatto del piede
+inosservabile a qualunque rilevatore basato sulla quiete: i tratti di appoggio
+collassano da $71$--$113$ campioni a $3$--$12$.
+\item Sui servo reali la marcia da sola girerebbe al $39$--$46\%$ dello stallo
+sul giunto pi\`u caricato --- $2.3\times$ il carico continuo raccomandato dal
+costruttore --- con picchi d'urto sopra lo stallo su al massimo lo $0.91\%$ dei
+campioni.
+\end{itemize}
+
+La continuazione ovvia \`e la quarta cella dell'ablazione --- retroazione
+d'assetto senza ricerca del terreno --- che direbbe se la ricerca contribuisca
+qualcosa una volta che il corpo \`e stabilizzato, e una campagna con i limiti
+dei servo nell'anello, che \`e dove il costo energetico di \Cth{} smetterebbe di
+essere gratuito.
+
+% =====================================================================
+\begin{thebibliography}{9}
+
+\bibitem{arrigoni2024}
+S.~Arrigoni, F.~Braghin, et al.,
+``Control of a Hexapod Robot Considering Terrain Interaction,''
+\emph{Robotics}, vol.~13, no.~10, art.~142, 2024.
+% TODO: verificare la lista completa degli autori sul PDF
+
+\bibitem{ax12a}
+ROBOTIS, \emph{Dynamixel AX-12A e-Manual}, ROBOTIS Co., Ltd.
+\url{https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/}
+
+\bibitem{phantomx}
+Trossen Robotics, \emph{PhantomX AX Metal Hexapod Mark~II --- assembly and
+specifications}.
+
+\bibitem{simscape}
+The MathWorks, Inc., \emph{Simscape Multibody User's Guide}, R2025b.
+
+\end{thebibliography}
+
+\end{document}

@@ -5,62 +5,15 @@ function info = allinea_stimatore(mdl, verbose, modo)
 %   allinea_stimatore(mdl, true)               con riepilogo
 %   allinea_stimatore(mdl, true, 'controlla')  NON scrive: dice solo come sta
 %
-% PERCHE' ESISTE
-%   [MISURATO 25/9] Il flag di contatto di C2 non e' una soglia sulla coppia:
-%   il modello confronta  |tau_misurata - tau_attesa| > cfg.c2.soglia_tau,
-%   e tau_attesa la calcola il blocco Inverse Dynamics, cioe' un
-%   rigidBodyTree costruito da Setup_robot_object con importrobot dall'URDF.
-%
-%   Dal 22/9 applica_inerzie corregge le inerzie dei 25 Solid di Simscape -
+%   Corregge le inerzie dei 25 Solid di Simscape -
 %   quelle dell'URDF sono ~1000 volte troppo grandi - ma NON tocca il
-%   rigidBodyTree. Da quel giorno il robot simulato e il modello che ne
-%   prevede la coppia sono due robot diversi, e la differenza fra coppia
-%   misurata e coppia attesa e' grande sempre, con o senza contatto.
+%   rigidBodyTree. 
 %
-%   Misura, stessa run T2 C2 di 10 s (results/diagnostica/valida_soglia.csv):
-%
-%                                   disallineati   allineati
-%     flag alto con la zampa in aria     95.1%        8.3%
-%     errore in appoggio                  7.0%        0.9%
-%     errore di un flag SEMPRE alto       7.0%        8.7%
-%     voli senza reset di z_ext          20 / 60      1 / 60
-%
-%   Nella colonna di sinistra il flag non fa meglio di una costante: non
-%   porta informazione. E in ricerca_terreno il ramo che azzera z_ext e
-%   z_hold sta dentro  if c(i) == 0, quindi con il flag incollato a 1 il
-%   comando degenera in  min(z, z_hold(t_reset)), una costante.
-%   CONSEGUENZA: dal 22/9 C2 non cerca il terreno. Le righe C2 delle tabelle
-%   prodotte dopo quella data non descrivono C2.
-%
-% COSA FA
 %   Riscrive massa e inerzia dei corpi di robotModel con gli stessi cfg.I_*
 %   che applica_inerzie mette nei Solid, e forza la maschera del sottosistema
 %   Inverse Dynamics a rivalutare, cosi' TreeStruct viene ricostruito.
-%   Poi VERIFICA di averlo fatto: rilegge il mask workspace e confronta. Una
-%   correzione che non attecchisce in silenzio sarebbe peggio di nessuna
-%   correzione - e' esattamente l'errore che stiamo riparando.
 %
-% COSA NON FA
-%   Nessun save_system. Come applica_terreno e applica_inerzie, scrive solo
-%   in memoria: il .slx del collega resta quello committato.
 %
-% DOVE VA CHIAMATA
-%   Subito dopo applica_inerzie, in ogni script di campagna:
-%       applica_terreno('T5', false, mdl);
-%       applica_inerzie(mdl);
-%       allinea_stimatore(mdl);     % <-- le due copie devono restare pari
-%
-%   Le due funzioni vanno sempre insieme: correggerne una sola e' come essere
-%   rimasti al 22/9. Se un giorno le inerzie verranno corrette direttamente
-%   nel .slx, va corretto anche l'URDF, o questa resta necessaria.
-%
-% ATTENZIONE A clear all
-%   init_gait ricostruisce robotModel solo se non esiste
-%   (if ~exist('robotModel','var')). Dopo un clear all l'albero torna quello
-%   dell'URDF: per questo la chiamata sta negli script, non una volta sola.
-%
-% Progetto FSR PhantomX - A. Russo
-
 if nargin < 1 || isempty(mdl),     mdl = 'phantomx_sim_zero'; end
 if nargin < 2 || isempty(verbose), verbose = false; end
 if nargin < 3 || isempty(modo),    modo = 'correggi'; end
@@ -79,9 +32,6 @@ end
 rm = evalin('base', 'robotModel');
 
 %% ---- quali corpi, e con quale inerzia ----
-% Stessa mappa di applica_inerzie, sugli stessi prefissi di nome. Se cambia
-% li', deve cambiare qui: sono la stessa decisione scritta due volte, e
-% questa riga di commento e' l'unico legame che le tiene insieme.
 B = struct('nome',{}, 'I_ora',{}, 'I_giusta',{});
 saltati = {};
 for k = 1:numel(rm.Bodies)
@@ -98,8 +48,6 @@ for k = 1:numel(rm.Bodies)
                       'I_giusta', [In(1) In(2) In(3) 0 0 0]);
 end
 
-% La stessa guardia di applica_inerzie, per lo stesso motivo: allinearne 24
-% su 25 lascerebbe un disallineamento piu' difficile da vedere di questo.
 if numel(B) ~= 25
     error('allinea_stimatore:corpi', ...
         ['Nell''albero ho riconosciuto %d corpi del robot, ne attendevo 25.\n' ...
@@ -135,9 +83,6 @@ if strcmp(modo,'controlla')
 end
 
 %% ---- correzione dell'albero ----
-% getBody restituisce un riferimento nelle versioni recenti e una copia in
-% quelle vecchie. Invece di fidarsi, si scrive e si rilegge: se non ha
-% attecchito si ripiega su replaceBody, che e' la strada documentata.
 for k = 1:numel(B)
     b = getBody(rm, B(k).nome);
     b.Inertia = B(k).I_giusta;
@@ -148,7 +93,6 @@ for k = 1:numel(B)
     end
 end
 
-% controllo sull'oggetto, prima ancora di portarlo nel modello
 male = {};
 for k = 1:numel(B)
     if ~as_uguali(getBody(rm, B(k).nome).Inertia, B(k).I_giusta)
@@ -166,17 +110,10 @@ assignin('base', 'robotModel', rm);
 info.allineati = numel(B);
 
 %% ---- farlo arrivare nella maschera ----
-% Il parametro di maschera vale la stringa 'robotModel': riassegnandolo, la
-% MaskInitialization rivaluta e TreeStruct viene ricostruito dall'albero
-% corretto. E' un set_param su un parametro di maschera, non un save.
 par = as_nome_parametro(blk);
 set_param(blk, par, get_param(blk, par));
 
 %% ---- la verifica che conta: cosa e' arrivato al blocco ----
-% Tutto il resto puo' andare bene e questa fallire lo stesso: se TreeStruct
-% non si e' ricostruito, il blocco continua a usare le inerzie dell'URDF e
-% noi crederemmo di aver risolto. E' il modo tipico in cui un problema come
-% questo sopravvive alla sua correzione.
 try
     w = get_param(blk, 'MaskWSVariables');
     j = find(strcmp({w.Name}, 'RigidBodyTree'), 1);
@@ -221,9 +158,6 @@ end
 
 %% ========================= helper =========================
 function blk = as_trova_blocco(mdl)
-%AS_TROVA_BLOCCO  Il sottosistema mascherato che porta il rigidBodyTree.
-%   Si cerca per PARAMETRO, non per nome: un blocco rinominato non deve far
-%   fallire in silenzio una funzione che serve proprio a evitare i silenzi.
 cand = find_system(mdl, 'LookUnderMasks','all', 'FollowLinks','on', ...
                    'BlockType','SubSystem');
 blk = '';

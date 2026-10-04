@@ -1,15 +1,8 @@
 function out = tabella_confronti(file_md)
-%TABELLA_CONFRONTI  C1, C2 e C3 affiancati per task, con il verdetto sul rumore.
+% C1, C2 e C3 affiancati per task, con il verdetto sul rumore.
 %
 %   tabella_confronti                      % scrive results/tabella_confronti.md
 %   out = tabella_confronti('altro.md')
-%
-% PERCHE' ESISTE
-%   [1/10] Le tabelle dei risultati stavano scritte a mano in
-%   docs/stato_progetto.md, una per task, e a ogni campagna andavano
-%   ricopiate. Con il terzo controllore il lavoro raddoppia e un numero
-%   ricopiato male non si vede. Qui la tabella si GENERA da results/: chi la
-%   legge sa che ogni cella e' un CSV, non una trascrizione.
 %
 % COSA LEGGE
 %   results/T*_C1.csv, _C2, _C3              le righe di campagna
@@ -17,25 +10,6 @@ function out = tabella_confronti(file_md)
 %                                            T4D, T5 (dall'1/10 sera, slew rate)
 %   soglia_deriva_T6                         la soglia di validita' di T6
 %   Non scrive nient'altro che il file .md. Non simula.
-%
-% LE REGOLE, LE STESSE DEL RESTO DEL PROGETTO
-%   - si confrontano solo controllori ADIACENTI, C1-C2 e C2-C3: ognuno
-%     aggiunge un meccanismo al precedente, quindi ogni confronto ne misura
-%     uno solo;
-%   - rumore di una colonna = escursione fra le tre perturbazioni di z0, per
-%     quel controllore su quel task. Per una coppia vale il PEGGIORE dei due;
-%   - rapporto = |differenza| / rumore. Si DICHIARA solo con rapporto >= 3
-%     (in grassetto). Sotto e' "n.c.", non concludente;
-%   - se il rumore di uno dei due manca (T4, T6, T7: mai misurato) il
-%     verdetto e' "n.d.": il valore si mostra, la differenza non si dichiara;
-%   - colonne di contatto (appoggio, slip, distacchi...) escluse: su T4, T4D,
-%     T5 e T6 sono NaN per costruzione, i sensori vedono solo il pavimento;
-%   - T6: solo l'esito binario, e "superato" vale solo con dev_lat_max sotto
-%     la soglia di soglia_deriva_T6 (un robot che deriva di lato puo' passare
-%     di fianco a un ostacolo invece che sopra).
-%   Angoli in gradi nella tabella (nei CSV sono radianti).
-%
-% Progetto FSR PhantomX - A. Russo
 
 if nargin < 1 || isempty(file_md), file_md = fullfile('results', 'tabella_confronti.md'); end
 
@@ -76,9 +50,6 @@ task = {
 
 % ---- rumore: escursione per (task, controllore, colonna) ----
 R = table();
-% [1/10, sera] Dopo lo slew rate un solo pavimento, tutti e tre i controllori
-% (rumore_metriche, quarto giro). I tre file di prima sono in
-% results/storico/pre_slew_20261001/diagnostica.
 for f = {'rumore_slew'}
     p = fullfile('results','diagnostica',[f{1} '.csv']);
     if isfile(p)
@@ -156,9 +127,7 @@ for i = 1:size(task,1)
     out.(tk) = V;
 end
 
-% ---- [1/10] fattibilita' sui motori veri, da results/diagnostica/fattibilita.csv ----
-% Solo valori, nessun verdetto: il rumore della coppia per giunto non e'
-% misurato. Punto di lavoro nominale, run valide (stesso filtro di fattibilita.m).
+% ---- fattibilita' sui motori veri, da results/diagnostica/fattibilita.csv ----
 pf = fullfile('results','diagnostica','fattibilita.csv');
 if isfile(pf)
     FA = readtable(pf, 'TextType','string');
@@ -206,20 +175,7 @@ if isfile(pf)
     L{end+1} = sprintf('*Lettura: %s; i **picchi d''urto** escono dallo stallo, su al massimo il %.2f%% dei campioni.*', mar, 100*smax);
 end
 
-% ---- [2/10] C3 con il pacco attivo (C3P), su T4, T4D, T6 ----
-% Non e' un confronto fra controllori: e' C3 su un robot con 1.1 kg in piu'
-% (+69% della massa). Si mostra accanto a C3 scarico, senza verdetto sul
-% rumore. Costo di trasporto ed energia esclusi: metriche li normalizza con
-% cfg.mass, che non contiene il pacco.
-%
-% CRITERIO, SCRITTO PRIMA DI LANCIARE (2/10). "Portato a termine col pacco":
-%   T4    salito = 1, come nella campagna
-%   T4D   causa_T4D = "dosso attraversato", come nella campagna
-%   T6    in 25 s nessuno dei tre controllori esce dal percorso (superato = 0
-%         per C1, C2 e C3): "a termine" qui vuol dire FARE QUANTO C3 SCARICO,
-%         cioe' nessun ribaltamento, deriva sotto la soglia di validita' e
-%         distanza almeno il 90% di quella di C3
-%   e in tutti e tre il pacco NON e' "al bordo o caduto" (stato_pacco).
+% ----  C3 con il pacco attivo (C3P), su T4, T4D, T6 ----
 fp = fullfile('results','diagnostica','pacco_C3P.csv');
 if isfile(fullfile('results','T4_C3P.csv')) || isfile(fp)
     PK = table();
@@ -257,9 +213,6 @@ if isfile(fullfile('results','T4_C3P.csv')) || isfile(fp)
             case 'T4',  ok_t = tc_valore(b, 'salito') == 1;
             case 'T4D', ok_t = ~isempty(b) && any(strcmp(string(b.causa_T4D(1)), "dosso attraversato"));
             case 'T6'
-                % una colonna tutta vuota arriva da readtable come NaN, non
-                % come testo: string(NaN) = "NaN" e il "nessun fallimento"
-                % risultava falso. Vuoto, mancante e NaN valgono nessuno.
                 cf = b.causa_fallimento(1);
                 if isnumeric(cf), nessuna = isnan(cf);
                 else, nessuna = ismissing(string(cf)) || strlength(strtrim(string(cf))) == 0;
@@ -359,8 +312,6 @@ if any(strcmp(col, {'salito','superato'})) || startsWith(col, 'recuperato')
     return
 end
 dd = b - a;
-% Le righe senza verso (es. corpo meno rampa) possono valere ~0 su un
-% controllore: la percentuale esploderebbe. Li' si da' la differenza assoluta.
 if verso == 0 || a == 0
     pc = sprintf('%+.3g', dd*fat);
 else

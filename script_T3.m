@@ -1,55 +1,28 @@
 %% script_T3.m - T3: traiettoria curva, imbardata costante  [impianto SIMSCAPE]
 %
-% COSA MISURA
-%   Se il cinematico sa percorrere un arco di cerchio tenendo il corpo
-%   orizzontale. Nel piano di confronto T3 e' classificato come NON
-%   discriminante fra C1 e C2 su terreno piano - la retroazione sul contatto
-%   non interviene se il terreno e' quello previsto - quindi serve a
-%   caratterizzare C3 contro il cinematico, non C1 contro C2.
+% Misura se il cinematico sa percorrere un arco di cerchio tenendo il corpo
+% orizzontale.
 %
-% PRIMA VIENE LA VERIFICA DEL SEGNO
-%   L'imbardata si ottiene ruotando la direzione del passo di ciascuna zampa
-%   (vedi applica_imbardata). Il segno di quella rotazione dipende dalla
-%   convenzione dei giunti nell'URDF, che in questo progetto ha gia' prodotto
-%   due errori di segno costati tempo. Percio' la prima cella NON e' una
-%   misura: e' un controllo. Si comanda +yaw_d e si guarda il segno
-%   dell'imbardata misurata. Se non torna, lo script si ferma e lo dice.
-%
-% ATTENZIONE AI NOMI: init_gait e' uno script, gira in questo workspace e
-% sovrascrive k, j, L, cfg, alpha, side, offset, pen. Tutte le variabili sono
-% prefissate t3_ per non finirci sotto.
+% VERIFICA DEL SEGNO
+%   L'imbardata si ottiene ruotando la direzione del passo di ciascuna zampa. 
+%   Il segno di quella rotazione dipende dalla convenzione dei giunti nell'URDF. 
+%   Percio' la prima cella NON e' una misura: e' un controllo. Si comanda +yaw_d 
+%   e si guarda il segno dell'imbardata misurata. Se non torna, lo script si ferma e lo dice.
 
-% QUALI METRICHE VALGONO SU UNA TRAIETTORIA CURVA
-%   La famiglia A e' definita per la marcia rettilinea, e su un arco di
-%   cerchio tre delle sue colonne non vogliono dire niente:
-%     err_vx_rms, err_vy_rms   confrontano la velocita' nel frame MONDO con
+% METRICHE SULLA TRAIETTORIA CURVA
+%     err_vx_rms, err_vy_rms   confrontano la velocita' nel world frame con
 %                              un comando costante [v 0]. Su un arco la
 %                              velocita' nel mondo ruota, quindi l'errore
 %                              misura la curva, non il controllore.
-%     dev_lat_rms, dev_lat_max scostamento dalla RETTA nominale: su un arco
-%                              cresce per costruzione.
-%     distanza                 e' la corda fra partenza e arrivo, non la
-%                              lunghezza dell'arco: sottostima il percorso.
-%   Restano valide: yaw_err_fin (metriche conosce meta.yaw_d), tutta la
-%   famiglia B (planarita' del corpo), tutta la C, tutta la D.
-%   Lo script aggiunge le tre grandezze giuste per un arco - lunghezza
-%   dell'arco, velocita' media lungo il percorso, imbardata misurata - e
-%   stampa solo le colonne che hanno senso.
+%     dev_lat_rms, dev_lat_max scostamento dalla retta nominale
+%
+%     distanza                 corda fra partenza e arrivo.
+%
 
 t3_cfg  = phantomx_config();
-% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
-% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
-% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
-% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
-% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
+
 t3_ctrl  = 'C2';      % 'C1' | 'C2' | 'C3'
-% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
-% aprire i file:
-%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
-% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
-% di ogni task, che e' il problema che risolve. In cambio ogni run che la
-% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
-% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
+
 if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t3_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t3_ctrl);
@@ -61,20 +34,13 @@ T3 = table();
 t3_runs = {};
 t3_etichette = {};
 
-% Il terreno si fissa qui, non si eredita.
 applica_terreno('T3', false, t3_mdl);
-% [23/9] Inerzie corrette in memoria: vedi applica_inerzie e piano_confronto 9.
+
 applica_inerzie(t3_mdl);
-% [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
-% produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
-% importato dall'URDF: correggere le inerzie del robot e lasciare a lui
-% quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
-% incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
-% 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+
 allinea_stimatore(t3_mdl);
-% [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-% misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-if strcmp(t3_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+
+if strcmp(t3_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t3_info.carico, commenta_carico(t3_mdl, 'off'); else, commenta_carico(t3_mdl); end
 end
 
@@ -83,13 +49,9 @@ fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_ctrl);
 %% ================= 0. verifica del segno =================
 fprintf('\n===== T3: verifica del segno dell''imbardata =====\n');
 
-% [CORRETTO 1/10] Il modello va passato a OGNI chiamata. Senza, applica_imbardata
-% ricade sul suo default phantomx_sim_zero: con C3 l'imbardata finiva sul
-% modello di C1/C2 e il robot di C3 andava dritto (misurata +0.0005 rad/s su
-% +0.1). Con C1 e C2 non si vedeva, perche' girano proprio su quel modello.
 t3_info = applica_imbardata(t3_yaw, [], t3_mdl);
-OVERRIDE_C2   = t3_c2;                                         %#ok<NASGU>
-OVERRIDE_GAIT = struct('S', t3_info.S);                        %#ok<NASGU>
+OVERRIDE_C2   = t3_c2;                                         
+OVERRIDE_GAIT = struct('S', t3_info.S);                       
 init_gait
 
 t3_out = sim(t3_mdl, 'StopTime', num2str(t3_dur));
@@ -99,7 +61,6 @@ t3_run = adatta_simscape(t3_out, struct( ...
              'vel_d', [t3_info.S/t3_cfg.T_stance 0], ...
              'yaw_d', t3_yaw));
 
-% srotolando l'angolo: la differenza fra estremi e' limitata a +-pi/durata
 [t3_yaw_mis, t3_rot, t3_iy] = tasso_imbardata(t3_run.t, t3_run.rpy(:,3), t3_wz(t3_run));
 fprintf('  sorgente della misura: %s\n', t3_iy.sorgente);
 fprintf('\n  comandata %+.4f rad/s   misurata %+.4f rad/s   rapporto %+.2f\n', ...
@@ -109,25 +70,6 @@ fprintf('  rotazione totale %+.3f rad = %+.2f giri  (attesa %+.2f giri)\n', ...
 
 t3_rapp = t3_yaw_mis / t3_yaw;
 
-% [CORRETTO] IL MODULO VIENE PRIMA DEL SEGNO.
-% Prima il controllo del segno stava per primo, e sign() non chiede un modulo
-% minimo: con un'imbardata misurata attorno allo zero scatta sul segno del
-% RUMORE. E' successo - misurata -0.0047 rad/s su +0.1 comandati, cioe' il 5% -
-% e la diagnosi emessa era "segno invertito". Invertire il delta di tutte e sei
-% le zampe non ha cambiato niente, come doveva essere: se invertire la causa
-% non inverte l'effetto, quella non era la causa.
-%
-% Sotto il 5% il segno non e' un'informazione e non va nemmeno guardato.
-%
-% [CORRETTO] La soglia era al 20%, scelta a occhio venerdi', e avrebbe
-% fermato la misura BUONA: in sessione pulita le curve rispondono al 12-15%
-% del comando, con imbardata parassita a comando nullo di 5e-6 rad/s - cioe'
-% un segnale tremila volte sopra il rumore. Il 5% separa i due casi osservati:
-% 4.7% col segno a caso sul robot rotto, 12-15% riproducibile su quello sano.
-%
-% E' una soglia empirica e va detto. La protezione vera contro il rumore non
-% e' questa riga: e' partire da una sessione pulita (vedi README) e la cella
-% simmetrica qui sotto, che deve dare lo specchio della prima.
 if abs(t3_rapp) < 0.05
     applica_imbardata(0, [], t3_mdl);
     clear OVERRIDE_GAIT OVERRIDE_C2
@@ -175,15 +117,14 @@ t3_runs{end+1} = t3_run;
 t3_etichette{end+1} = sprintf('%+.3f rad/s', t3_yaw);
 
 %% ================= 1. la cella simmetrica =================
-% Comandare -yaw_d e verificare che il comportamento sia lo specchio. Se le
+% Comandare -yaw_d e verificare che il comportamento sia specchiato. Se le
 % due curve non sono simmetriche, c'e' un'asimmetria fra zampe destre e
-% sinistre - il parametro "side" di inv_kyn, o il montaggio delle mesh - e
-% va trovata prima di mettere T3 in relazione.
+% sinistre
 fprintf('\n===== T3: cella simmetrica =====\n');
 
 t3_info_m = applica_imbardata(-t3_yaw, [], t3_mdl);
-OVERRIDE_C2   = t3_c2;                                         %#ok<NASGU>
-OVERRIDE_GAIT = struct('S', t3_info_m.S);                      %#ok<NASGU>
+OVERRIDE_C2   = t3_c2;                                        
+OVERRIDE_GAIT = struct('S', t3_info_m.S);                      
 init_gait
 
 t3_out_m = sim(t3_mdl, 'StopTime', num2str(t3_dur));
@@ -213,14 +154,13 @@ clear OVERRIDE_GAIT OVERRIDE_C2
 init_gait
 
 %% ================= risultati =================
-% Il nome contiene il controllore: 'T3_risultati.csv' era lo stesso file per
-% C1 e C2, quindi la seconda campagna cancellava la prima in silenzio.
+ 
 if ~isfolder('results'), mkdir('results'); end
 t3_file = fullfile('results', sprintf('T3_%s.csv', t3_ctrl));
 writetable(T3, t3_file);
 fprintf('\nscritto  %s\n', t3_file);
 
-% Solo le colonne che hanno senso su un arco: vedi la nota in testa al file.
+% Solo le colonne che hanno senso su un arco.
 disp(T3(:, {'condizione','yaw_cmd','yaw_mis','yaw_rapporto','arco', ...
             'vel_arco','yaw_err_fin','roll_rms','pitch_rms', ...
             'slip_tot','appoggio_medio','disp_carico','cot','successo'}))
@@ -248,7 +188,7 @@ for t3_j = 1:numel(t3_runs)
 end
 legend(t3_etichette, 'Location','best');
 xlabel('x [m]'); ylabel('y [m]'); title('T3 - traiettoria del CoM nel piano')
-salva_grafico(sprintf('T3_%s', t3_ctrl));   % grafici/<tag>.fig, testi modificabili dopo
+salva_grafico(sprintf('T3_%s', t3_ctrl));   
 
 %% ================= helper =================
 function wz = t3_wz(r)
@@ -261,12 +201,6 @@ end
 
 function riga = t3_riga_arco(r, cfg, yaw_cmd, yaw_mis, info)
 %T3_RIGA_ARCO  La riga di metriche piu' le grandezze giuste per un arco.
-%
-%   Su una traiettoria curva la "distanza" di metriche e' la CORDA fra
-%   partenza e arrivo, e la velocita' media ne deriva: entrambe sottostimano
-%   il percorso, tanto piu' quanto piu' la curva e' chiusa. Qui si aggiunge
-%   la lunghezza dell'ARCO, integrata sul cammino, e la velocita' media
-%   lungo di esso.
 
 riga = metriche(r, cfg, struct('t_regime', 2*cfg.T));
 
@@ -281,8 +215,6 @@ riga.yaw_mis      = yaw_mis;
 riga.yaw_rapporto = yaw_mis / yaw_cmd;
 riga.arco         = arco;
 riga.vel_arco     = arco / max(dt, eps);
-% corda sulla STESSA finestra dell'arco: calcolata sulla run intera
-% includeva il transitorio e poteva superare l'arco, che e' impossibile
 riga.corda        = norm(r.p(end,1:2) - r.p(i0,1:2));
 riga.curvatura    = 1 - riga.corda / max(arco, eps);   % 0 = retta
 riga.S_usato      = info.S;

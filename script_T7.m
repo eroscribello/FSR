@@ -1,56 +1,11 @@
 %% script_T7.m - T7: spinta laterale impulsiva  [impianto SIMSCAPE]
 %
-% COSA MISURA, E PERCHE' PROPRIO QUESTO
-%   C1 e' in anello aperto. C2 corregge la quota dei piedi con la ricerca del
-%   terreno, ma non l'assetto ne' la direzione del corpo. Nessuno dei due ha
-%   retroazione sullo stato del CORPO: dopo una spinta non hanno l'informazione
-%   per tornare dov'erano.
-%   E' l'unica affermazione su un controllore in forza che sia STRUTTURALE e
-%   non numerica. Le altre sono cadute il 24/9: i limiti di coppia non servono
-%   (in RMS il robot sta nel datasheet su ogni task) e il vantaggio in cot e'
-%   al limite del pavimento di rumore.
-%
-% ================== [RITIRATO 24/9] LA PRIMA VERSIONE ==================
-%   Misurava la deviazione rispetto a y(t0), cioe' alla quota laterale del
-%   corpo un istante prima della spinta. Sbagliato, e si e' visto subito:
-%
-%       dv/vnom   0.00   0.25   0.50   1.00   2.00   4.00
-%       dev_max   3.5    2.6    1.9    2.1    2.7    14.6   [mm]
-%
-%   La deviazione SENZA disturbo (3.5 mm) e' piu' grande che con disturbo a
-%   quattro ampiezze su cinque. Non e' rumore numerico: e' l'ONDEGGIO LATERALE
-%   PROPRIO DELL'ANDATURA A TRIPODE, che alterna i due terzetti e fa oscillare
-%   il corpo di qualche millimetro per conto suo. Fino a dv = 2 la spinta e'
-%   PIU' PICCOLA dell'ondeggio, quindi i numeri sono non monotoni e non
-%   misurano niente.
-%   Lo script infatti dichiarava "soglia di non recupero: dv = 0.00", cioe'
-%   bocciava la propria run di controllo. Quando un esperimento boccia il
-%   controllo, e' l'esperimento a essere sbagliato.
-%
-% ================== COME SI MISURA ADESSO: PER DIFFERENZA ==================
-%   Il simulatore e' DETERMINISTICO - lo abbiamo misurato il 23/9, ed e' il
-%   motivo per cui abbiamo deciso di non ripetere le campagne tre volte.
-%   Quindi la run disturbata e quella indisturbata differiscono SOLO per il
-%   disturbo, e la deviazione vera e'
+% COSA MISURA
 %
 %       dy(t) = y_disturbata(t) - y_indisturbata(t)
 %
-%   L'ondeggio dell'andatura si cancella esattamente, perche' e' identico
-%   nelle due run. Resta solo la risposta alla spinta. Stessa cosa per
-%   l'imbardata.
 %
-%   La run a dv = 0 e' quindi il RIFERIMENTO, non un punto della spazzata, e
-%   deve stare per prima. Lo script lo impone.
-%
-% ================== IL PAVIMENTO DELLA MISURA DIFFERENZIALE ==============
-%   Una differenza fra due run non e' esattamente zero nemmeno a parita' di
-%   ingressi: il passo variabile del solutore lascia un residuo. Per sapere
-%   quanto vale, la spazzata include dv = 0.01, cioe' una spinta trascurabile:
-%   quello che ne esce e' il rumore della misura, non un effetto. Ogni
-%   deviazione sotto quel valore va letta come zero.
-%   E' la stessa regola di rumore_metriche, applicata qui.
-%
-% ================== I CRITERI, DICHIARATI PRIMA DELLE RUN ================
+%  CRITERI:
 %     dev_max   = max |dy| dopo t0
 %     dev_fin   = |dy| mediata sull'ultimo secondo
 %     recupero  = 1 - dev_fin / dev_max        (1 = torna esattamente dov'era)
@@ -66,65 +21,16 @@
 %   SOGLIE      il piu' piccolo impulso che NON recupera, e il piu' piccolo
 %               che fa cadere. Sono due numeri diversi, si riportano entrambi.
 %
-% ================== AMPIEZZE ==================
-%   J = m * dv, con dv multiplo di v_nom: "dv = 1" e' una spinta che vale
-%   tutta la velocita' di marcia, leggibile senza conoscere la massa.
-%   La spazzata sale fino a 16 perche' a 4 si era appena sopra l'ondeggio.
-%   Stima del ribaltamento: portare il baricentro (154 mm) sul bordo del
-%   poligono d'appoggio chiede ~0.9 m/s, cioe' dv ~ 7; con le zampe piantate
-%   e l'attrito, di piu'. La spazzata deve arrivarci sopra.
-%
-% ================== [DECISO PRIMA 24/9] SE REGGONO TUTTO ================
-%   Se C1 e C2 recuperano a ogni ampiezza, la causa probabile e' che in
-%   ComputedTorque la loro coppia di reazione e' ILLIMITATA, mentre un
-%   controllore in coppia avrebbe 1.5 N*m. In quel caso si rifa' T7 con gli
-%   attuatori saturati al datasheet, per tutti e tre.
-%   Deciso adesso, non dopo aver visto i numeri.
-%
-% ================== [DA FARE PRIMA DI RIVENDICARE IL RISULTATO] =========
-%   dev_lat e yaw_err sono nella lista delle colonne RITIRATE dal pavimento di
-%   rumore del 23/9. Quel pavimento era pero' misurato su run INDISTURBATE:
-%   non dice che non sappiano risolvere una spinta. Qui la riga dv = 0.01
-%   fornisce il pavimento specifico di questa misura, che e' il controllo che
-%   serviva. Va citato in relazione insieme al risultato.
-%
-% COSA TOCCA DEL MODELLO
-%   applica_disturbo aggiunge tre blocchi a run-time e NON salva mai: il .slx
-%   del collega resta identico, basta bdclose. Come applica_terreno.
-%
-% ATTENZIONE AI NOMI: init_gait e' uno script e sovrascrive variabili del
-% workspace. Tutte le variabili qui sono prefissate t7_.
-%
-% USO
-%   clear all; bdclose all; startup_phantomx
-%   script_T7                      % con t7_ctrl = 'C1'
-%   poi si mette t7_ctrl = 'C2' (o 'C3') e si rilancia
-%
-% Progetto FSR PhantomX - A. Russo
-
 t7_cfg  = phantomx_config();
-% [29/9] Il controllore si sceglie per NOME. Modello e interruttore
-% OVERRIDE_C2 li da' scegli_controllore, che e' l'unico posto dove sta
-% scritto chi gira su cosa. Prima erano un booleano: con tre controllori
-% quel booleano non sbagliava il calcolo, sbagliava il NOME DEL FILE, e
-% una run di C3 sovrascriveva results/T*_C2.csv senza un errore.
 t7_ctrl = 'C2';      % 'C1' | 'C2' | 'C3'
 t7_dur  = 12;         % [s]
 t7_t0   = 4;          % [s] la spinta arriva a marcia regolare (transitorio 2 s)
 t7_larg = 0.05;       % [s] larghezza dell'impulso
-t7_dv   = [0 0.01 1 2 4 8 16];       % moltiplicatori di v_nom; il primo e' il
-                                     % RIFERIMENTO, il secondo il PAVIMENTO
+t7_dv   = [0 0.01 1 2 4 8 16];       % moltiplicatori di v_nom
 
 assert(t7_dv(1) == 0, 'script_T7:riferimento', ...
     'La prima ampiezza deve essere 0: e'' la run di riferimento, non un punto.');
 
-% [29/9] Scavalcabile dal workspace, per lanciare piu' task di fila senza
-% aprire i file:
-%     OVERRIDE_CTRL = 'C3'; script_T5; script_T6; clear OVERRIDE_CTRL
-% NON viene cancellata dallo script: se lo facesse andrebbe riscritta prima
-% di ogni task, che e' il problema che risolve. In cambio ogni run che la
-% usa lo dichiara a schermo, perche' lo stato residuo deve vedersi - una
-% OVERRIDE dimenticata nel workspace ci e' gia' costata una campagna.
 if exist('OVERRIDE_CTRL','var') && ~isempty(OVERRIDE_CTRL)
     t7_ctrl = OVERRIDE_CTRL;
     fprintf(2, '  [OVERRIDE_CTRL] controllore forzato a %s\n', t7_ctrl);
@@ -146,22 +52,16 @@ for t7_i = 1:numel(t7_J)
     % ---- terreno, inerzie, disturbo: si fissano qui, non si ereditano ----
     applica_terreno('T7', false, t7_mdl);
     applica_inerzie(t7_mdl);
-    % [25/9] E subito dopo lo stimatore, SEMPRE. Il blocco Inverse Dynamics che
-    % produce tau_attesa per il flag di contatto di C2 usa un rigidBodyTree
-    % importato dall'URDF: correggere le inerzie del robot e lasciare a lui
-    % quelle vecchie rende |tau_mis - tau_att| grande ovunque, il flag resta
-    % incollato a 1 e C2 smette di cercare il terreno. E' successo dal 22/9 al
-    % 25/9. Vedi allinea_stimatore e docs/piano_confronto.md.
+
     allinea_stimatore(t7_mdl);
-    % [1/10] Il modello di C3 porta un carico, attivo su disco: va tolto, o si
-    % misura C3 carico contro C1 e C2 scarichi. Su C1 e C2 non fa niente.
-    if strcmp(t7_mdl, 'phantomx_sim_attitude')   % [2/10] il pacco resta solo per C3P
+
+    if strcmp(t7_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
         if t7_info.carico, commenta_carico(t7_mdl, 'off'); else, commenta_carico(t7_mdl); end
     end
     applica_disturbo(t7_mdl, t7_J(t7_i), 'applica', ...
                      struct('t0', t7_t0, 'durata', t7_larg, 'asse', 'y'));
 
-    OVERRIDE_C2 = t7_c2;                                       %#ok<NASGU>
+    OVERRIDE_C2 = t7_c2;                                       
     clear OVERRIDE_GAIT
     init_gait
 
@@ -187,9 +87,6 @@ for t7_i = 1:numel(t7_J)
     end
 
     % ---- la differenza rispetto alla run indisturbata ----
-    % adatta_simscape ricampiona tutte le run sulla stessa griglia a 200 Hz,
-    % quindi i vettori sono confrontabili campione per campione. Se non lo
-    % fossero, meglio fermarsi che allineare a occhio.
     if numel(t7_run.t) ~= t7_n_rif
         error('script_T7:griglia', ...
             'Run %d ha %d campioni invece di %d: le griglie non coincidono.', ...
@@ -199,8 +96,7 @@ for t7_i = 1:numel(t7_J)
     t7_dyaw = t7_run.rpy(:,3) - t7_yaw_rif;
 
     if isempty(t7_tt), t7_tt = t7_run.t; end
-    t7_DY(:, t7_i) = t7_dy;                                    %#ok<SAGROW>
-
+    t7_DY(:, t7_i) = t7_dy;                                   
     t7_dopo = t7_run.t >= t7_t0;
     t7_coda = t7_run.t >= t7_run.t(end) - 1;
 
@@ -213,8 +109,7 @@ for t7_i = 1:numel(t7_J)
     t7_riga.dev_fin_mm   = 1e3 * t7_dfin;
     t7_riga.dyaw_deg     = rad2deg(mean(t7_dyaw(t7_coda)));
     t7_riga.durata_sim   = t7_run.t(end);
-    % la deviazione grezza, quella della prima versione: si tiene per mostrare
-    % in relazione quanto vale l'ondeggio dell'andatura rispetto al segnale
+    
     t7_riga.dev_grezza_mm = 1e3 * max(abs(t7_run.p(t7_dopo,2) - t7_run.p(find(t7_dopo,1),2)));
 
     if t7_dmax > 1e-9
@@ -229,28 +124,12 @@ for t7_i = 1:numel(t7_J)
         fprintf('  [pavimento] la spinta trascurabile produce %.3f mm:\n', 1e3*t7_pav);
         fprintf('              sotto questo valore non si legge niente.\n');
     end
-    % [CORRETTO 24/9] Non basta stare SOPRA il pavimento: serve un margine.
-    % Il progetto ha gia' una regola per questo, dal pavimento di rumore del
-    % 23/9: una quantita' discrimina se il rapporto segnale/dispersione e'
-    % almeno 3. Qui vale identica. Senza il fattore 3 le righe a dv = 1 e 2
-    % (1.46 e 1.64 mm contro un pavimento di 0.91) entravano nel conto delle
-    % soglie pur essendo indistinguibili dal rumore, e la "soglia di non
-    % recupero" usciva a dv = 0.01.
-    % Le prime due righe sono il riferimento e il pavimento: non si giudicano.
     t7_riga.sotto_pavimento = (t7_i <= 2) || (t7_dmax < 3*t7_pav);
 
     % ---- i criteri, applicati come dichiarati in testa ----
     t7_riga.caduto = (t7_riga.causa_fallimento == "ribaltamento") || ...
                      (t7_run.t(end) < t7_dur - 1e-6) || ...
                      (t7_riga.z_media < 0.6 * t7_z_rif);
-
-    % [AGGIUNTO 24/9] Il recupero non si dichiara su un RAPPORTO soltanto.
-    % recupero = 1 - fin/max e' una frazione: puo' valere 0.6 anche quando il
-    % robot ha recuperato due millimetri, cioe' niente. Perche' conti, la
-    % QUANTITA' recuperata (max - fin) deve superare la stessa soglia di
-    % leggibilita' di 3x il pavimento usata per il resto.
-    % Scritto ADESSO, prima di misurare C3: se lo aggiungessimo dopo aver
-    % visto un C3 che "recupera", sarebbe una soglia costruita sul risultato.
     t7_riga.recuperato = ~t7_riga.caduto && t7_riga.recupero >= 0.5 && ...
                          (1e-3*(t7_riga.dev_max_mm - t7_riga.dev_fin_mm) >= 3*t7_pav) && ...
                          abs(t7_riga.dyaw_deg) <= 5;
@@ -313,9 +192,6 @@ fprintf('\n  scritto %s\n', t7_file);
 fprintf('  Il .slx non e'' stato salvato: bdclose all riporta tutto com''era.\n\n');
 
 %% ---- il grafico ----
-% [24/9] Mancava: c'era la chiamata a salva_grafico ma nessuna figura, e
-% salva_grafico avvisa e non salva niente. Due pannelli, e il secondo e' il
-% risultato in una figura sola.
 t7_fig = figure('Name', sprintf('T7 %s', t7_ctrl), 'Position', [80 60 920 720]);
 
 % pannello 1: la deviazione nel tempo, scala log perche' le ampiezze
