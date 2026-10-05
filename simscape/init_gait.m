@@ -1,18 +1,4 @@
 %% init_gait.m - parametri di andatura e contatto, verifica e taratura giunti
-%
-%  Eseguire PRIMA della simulazione, o metterlo in
-%  Modeling > Model Settings > Model Properties > Callbacks > InitFcn.
-%
-%  Nel blocco Constant "offset" scrivi   offset   (la variabile, non zeros(18,1)).
-%  Nei Constant di T, S, H, z0 scrivi    gait.T   gait.S   gait.H   gait.z0
-%  Nel Constant dello sfasamento scrivi  gait.T/2
-%
-%  DIFFERENZA RISPETTO ALLA VERSIONE PRECEDENTE
-%  I numeri non sono piu' scritti qui: vengono da phantomx_config. I valori
-%  sono gli stessi di prima, quindi la simulazione si comporta in modo
-%  identico. Cambia solo che adesso esiste un posto solo dove modificarli,
-%  e che una divergenza fra questo file e l'MPC non puo' piu' passare
-%  inosservata.
 
 clear gait
 
@@ -25,10 +11,6 @@ cfg = phantomx_config();
 %  2 = solo FEMORE  RR a -0.5 rad
 %  3 = solo TIBIA   RR a -0.5 rad
 %  4 = solo COXA    RR a -0.5 rad
-%
-%  Con TARATURA diverso da 0 la cinematica inversa viene annullata e ai
-%  giunti arriva esattamente il vettore di prova. Non serve toccare lo
-%  schema: si passa dallo stesso blocco "offset" che c'e' gia'.
 %  ====================================================================
 TARATURA = 0;
 
@@ -54,10 +36,7 @@ contact_w     = cfg.contact.w;       % [m]        transition region width
 contact_vcrit = cfg.contact.vcrit;   % [m/s]      velocita' critica attrito
 
 %% ---------------- Zampe: ordine del Mux, lato, montaggio ----------------
-% L'ordine e' quello verificato sul Mux8: RR MR FR RL ML FL,
-% e dentro ogni terna: coxa, femore, tibia.
-% alpha e side vengono da cfg (ordine CAN) e sono riportati in ordine Mux
-% tramite cfg.mux2can: nessun numero riscritto a mano.
+% L'ordine e' quello verificato sul Mux8: RR MR FR RL ML FL
 zampe_mux = cfg.legNamesMUX;
 
 alpha = struct(); side = struct();
@@ -69,13 +48,10 @@ end
 
 %% ---------------- Correzione permanente degli zeri ----------------
 % Differenza costante fra lo zero dei giunti nell'URDF e lo zero che
-% assume inv_kyn. La taratura ha detto che e' nulla: si lascia a zero.
-% Ordine: [coxa femore tibia] per RR MR FR RL ML FL.
+% assume inv_kyn
 q_corr = zeros(18,1);
 
 %% ---------------- posa iniziale dei giunti ----------------
-% I 18 Revolute Joint prendono da qui la loro posizione di partenza. Senza,
-% partono da zero: la posa dell'URDF, che non sostiene il robot.
 q0 = zeros(18,1);
 for k = 1:6
     L = zampe_mux{k};
@@ -113,11 +89,6 @@ end
 
 
 %% ====================================================================
-% Tolleranza: 1e-4 rad sono circa 15 micron al piede su una gamba da 15 cm,
-% cioe' irrilevanti. Serve a non far scattare la guardia sull'arrotondamento
-% dei letterali. Un disallineamento vero — 0.12 contro 0.153 — vale gradi,
-% non centesimi di grado.
-
 TOLL = 1e-4;
 
 trueX_c = cfg.r_offset - cfg.lc;
@@ -142,16 +113,11 @@ if abs(phi_ik - phi_cfg) > TOLL || abs(psi_ik - psi_cfg) > TOLL
 end
 
 %% ---- oggetto rigidBodyTree per il blocco Inverse Dynamics ----
-% Lo costruisce Setup_robot_object. La guardia evita di rifare importrobot
-% a ogni simulazione: e' lento.
 if ~exist('robotModel','var')
     Setup_robot_object;
 end
 
 %% ---- interruttore per le prove statiche ----
-% misura_quota (e ogni altra prova a zampe ferme) imposta FORZA_STATICO nel
-% workspace prima di simulare. Va gestito QUI: init_gait e' l'InitFcn del
-% modello, quindi qualunque azzeramento fatto fuori verrebbe riscritto.
 if exist('FORZA_STATICO','var') && FORZA_STATICO
     gait.S = 0;
     gait.H = 0;
@@ -159,9 +125,6 @@ if exist('FORZA_STATICO','var') && FORZA_STATICO
 end
 
 %% ---- override per la campagna ----
-% init_gait e' l'InitFcn del modello: qualunque assegnazione fatta a mano nel
-% workspace prima di sim verrebbe riscritta qui. L'override deve passare da
-% questa variabile.
 if exist('OVERRIDE_GAIT','var') && isstruct(OVERRIDE_GAIT)
     ovNomi = fieldnames(OVERRIDE_GAIT);
     for ovI = 1:numel(ovNomi)
@@ -172,24 +135,11 @@ if exist('OVERRIDE_GAIT','var') && isstruct(OVERRIDE_GAIT)
 end
 
 %% ---- interruttore C1 / C2 ----
-% Un runner puo' scegliere il controllore senza editare phantomx_config:
-%     OVERRIDE_C2 = false;   init_gait;   sim(...)
-% Come FORZA_STATICO e OVERRIDE_GAIT, va gestito QUI: init_gait e' l'InitFcn,
-% quindi cfg viene ricostruita a ogni sim e un'assegnazione fatta fuori
-% sarebbe riscritta.
 if exist('OVERRIDE_C2','var') && ~isempty(OVERRIDE_C2)
     cfg.c2.attiva = logical(OVERRIDE_C2);
     fprintf('  [override] cfg.c2.attiva = %d\n', cfg.c2.attiva);
 end
 
-% [23/9] Soglia di rilevazione del contatto, per la spazzata di sensibilita':
-%     OVERRIDE_C2_SOGLIA = 2 * cfg.c2.soglia_tau;   init_gait;   sim(...)
-% Vale lo stesso motivo di OVERRIDE_C2: cfg viene ricostruita a ogni sim
-% (init_gait e' l'InitFcn), quindi assegnare c2_soglia fuori da qui non serve.
-% E' l'UNICO parametro di C2 che dipende dalle inerzie: gli altri (v_search,
-% z_ext_max, z_nom, tol) sono comandi in posizione e geometria.
-% Accetta un 1x3 (una soglia per giunto) oppure uno scalare, che viene
-% espanso ai tre giunti.
 if exist('OVERRIDE_C2_SOGLIA','var') && ~isempty(OVERRIDE_C2_SOGLIA)
     cfg.c2.soglia_tau = OVERRIDE_C2_SOGLIA;
     fprintf('  [override] cfg.c2.soglia_tau = %s N*m\n', mat2str(cfg.c2.soglia_tau, 4));
@@ -201,10 +151,6 @@ else
     c2_soglia = inf(1,3);    % il flag di contatto non scatta mai
 end
 
-% [23/9] Nel modello la soglia entra in un Relational Operator contro un Mux
-% di TRE coppie (coxa, femore, tibia): deve essere 1x3 sempre. Uno scalare si
-% espande, qualunque altra dimensione e' un errore di chi ha scritto
-% l'override, e va fermato qui e non a meta' simulazione.
 if isscalar(c2_soglia), c2_soglia = repmat(c2_soglia, 1, 3); end
 c2_soglia = reshape(c2_soglia, 1, []);
 if numel(c2_soglia) ~= 3
@@ -212,19 +158,7 @@ if numel(c2_soglia) ~= 3
         '(coxa, femore, tibia).'], numel(c2_soglia));
 end
 
-% ATTENZIONE, ED E' STATO UN ERRORE NOSTRO: c2_soglia = inf NON basta per
-% avere l'anello aperto. Con il flag di contatto sempre falso, la ricerca del
-% terreno entra nel suo ramo di DISCESA a ogni fase di appoggio e la zampa
-% scende di z_ext_max a v_search. L'interruttore vero e' c2_par(1), letto dai
-% due blocchi MATLAB Function tramite ricerca_terreno.
 %% ---- quota degli ostacoli ----
-% I sette Rigid Transform degli ostacoli leggono  floor_off + [0 0 ost_dz].
-% Quell'espressione e' SALVATA nel .slx, quindi il modello non compila se
-% ost_dz non esiste: chi apre il modello e simula senza aver lanciato
-% applica_terreno si trova un "undefined variable ost_dz".
-% Qui si garantisce che ci sia sempre. applica_terreno lo sovrascrive per
-% task - zero su terreno imperfetto, cfg.terreno.ost_dz su piano liscio - e
-% il default corrisponde allo stato con cui il modello e' salvato (liscio).
 if ~exist('ost_dz','var') || isempty(ost_dz)
     ost_dz = cfg.terreno.ost_dz;
 end
@@ -236,9 +170,6 @@ c2_par = [double(cfg.c2.attiva), ...
           cfg.c2.t_reset, ...
           cfg.c2.tol];
 
-% La soglia di ricerca va confrontata con la profondita' EFFETTIVA comandata:
-% se si ritara gait.z0 (campagna T2) senza aggiornare z_nom, la condizione
-% z >= z_nom - tol cambia significato in silenzio.
 if cfg.c2.attiva && abs(c2_par(2) - gait.z0) > cfg.c2.tol
     fprintf(2, ['  [c2] z_nom = %.4f ma gait.z0 = %.4f: la soglia di ricerca\n' ...
                 '       non e'' allineata alla profondita'' comandata.\n'], ...

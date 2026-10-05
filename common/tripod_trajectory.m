@@ -1,5 +1,5 @@
 function [x, y, z] = tripod_trajectory(t_in, T, S, H, z0, duty)
-%TRIPOD_TRAJECTORY  Traiettoria del piede per un ciclo di andatura a tripode.
+% Traiettoria del piede per un ciclo di andatura a tripode.
 %#codegen
 %
 %   t_in [s] tempo. Per il secondo tripode passare  t + T/2
@@ -10,14 +10,6 @@ function [x, y, z] = tripod_trajectory(t_in, T, S, H, z0, duty)
 %
 %   x, y, z  posizione comandata del piede nel frame CORPO, da passare
 %            a inv_kyn. Stessa convenzione: +z = verso il basso.
-%
-%  ------------------------------------------------------------------
-%  IL PROFILO E' C2 SU TUTTO IL CICLO: posizione, velocita' E
-%  accelerazione sono continue anche allo stacco e all'atterraggio.
-%  Serve perche' i giunti sono comandati in posizione: Simulink deriva
-%  due volte il comando per darlo a Simscape, quindi uno scalino di
-%  accelerazione diventa un impulso di coppia, cioe' uno scatto.
-%  ------------------------------------------------------------------
 
 
     T_swing  = duty * T;

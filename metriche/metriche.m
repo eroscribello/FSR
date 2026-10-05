@@ -1,5 +1,5 @@
 function [riga, dettaglio] = metriche(run, cfg, opt)
-%METRICHE  Calcola le cinque famiglie di metriche di una simulazione.
+% Calcola le cinque famiglie di metriche di una simulazione.
 %
 %   riga = metriche(run)                % cfg letta da phantomx_config
 %   riga = metriche(run, cfg)
@@ -35,31 +35,6 @@ function [riga, dettaglio] = metriche(run, cfg, opt)
 %               fare la tabella della campagna
 %   dettaglio   struttura con le serie temporali intermedie, per i grafici
 %
-% DUE COLONNE CHE DICONO *PERCHE'* UNA CELLA FALLISCE
-%   sotto3_frac  frazione di tempo con meno di tre piedi a terra. Distingue
-%                un tripode che tiene da un'andatura intermittente, cosa che
-%                appoggio_medio NON fa: una media di 3.0 e' compatibile sia
-%                con tre piedi sempre giu' sia con sei e zero alternati.
-%   corpoZ_pp    [m] rimbalzo verticale del corpo, picco-picco per ciclo.
-%                E' il modo in cui l'andatura cinematica cede: su C1 vale
-%                0.003 a 1x, 0.033 a 1.5x, 0.081 a 2x, su un'altezza di
-%                appoggio di 0.154.
-%   corpoZ_vz    [m/s] rms della velocita' verticale del corpo. VA LETTA
-%                INSIEME a corpoZ_pp e non al suo posto: l'ampiezza da sola
-%                non distingue il dondolio lento di 0.5x (29.1 mm) dal
-%                rimbalzo di 1.5x (33.3 mm), che sono due cedimenti diversi
-%                con la stessa ampiezza e tempi diversi.
-%   Senza queste due, una cella che fallisce da' solo frazione_task negativa
-%   e nessun modo di attribuirne la causa - ed e' esattamente il confronto
-%   che serve fra il cinematico e l'MPC alle velocita' alte.
-%
-% CAMPI MANCANTI
-%   Le metriche che dipendono da campi assenti in run valgono NaN, e la
-%   funzione stampa una volta l'elenco di cosa manca. Non e' un errore:
-%   all'inizio non tutto e' loggato, e una tabella con qualche NaN e' piu'
-%   utile di una funzione che si rifiuta di partire.
-%
-% Progetto FSR PhantomX - A. Russo
 
 %% ---------- argomenti ----------
 if nargin < 2 || isempty(cfg), cfg = phantomx_config(); end
@@ -97,9 +72,7 @@ end
 ha = @(c) isfield(run,c) && ~isempty(run.(c));
 
 %% ---------- finestra di regime ----------
-% Il transitorio iniziale non e' rappresentativo del controllore: se il robot
-% parte in aria e cade, i primi decimi di secondo raccontano la condizione
-% iniziale, non le prestazioni.
+% Il transitorio iniziale non e' rappresentativo del controllore
 sel = t >= opt.t_regime;
 if nnz(sel) < 10
     warning('metriche:regimeCorto', ...
@@ -129,20 +102,14 @@ A.dev_lat_max  = max(abs(run.p(sel,2) - run.p(1,2)));
 A.yaw_err_fin  = wrapToPi_(run.rpy(end,3) - yaw_atteso(run, t));
 A.distanza     = norm(run.p(end,1:2) - run.p(1,1:2));   % totale, avvio incluso
 
-% Velocita' media misurata SOLO nella finestra di regime. Includendo l'avvio
-% si misurerebbe anche la perdita di partenza, che e' un offset fisso in
-% metri: diluita su durate diverse darebbe velocita' diverse per la stessa
-% cella. Misurato: ~12.5 mm persi all'avvio, indipendenti dalla durata.
+% Velocita' media misurata solo nella finestra di regime. 
 i0 = find(sel, 1, 'first');
 A.distanza_regime = norm(run.p(end,1:2) - run.p(i0,1:2));
 A.vel_media       = A.distanza_regime / (t(end) - t(i0));
 % perdita di partenza: quanto il robot resta indietro rispetto al comando
-% durante l'avvio. Sull'SRB vale ~12 mm ed e' indipendente dalla durata.
+% durante l'avvio
 A.perdita_avvio   = norm(vel_d) * (t(i0) - t(1)) - norm(run.p(i0,1:2) - run.p(1,1:2));
 
-% L'avanzamento va misurato lungo la direzione COMANDATA e CON SEGNO: la
-% norma non distingue avanti da indietro, e a 2x il robot cammina
-% all'indietro risultando comunque al 18% del task invece che a -18%.
 dirc          = vel_d(:) / max(norm(vel_d), eps);
 A.avanzamento = (run.p(end,1:2) - run.p(1,1:2)) * dirc(1:2);
 att_tot       = norm(vel_d) * (t(end) - t(1));
@@ -156,8 +123,8 @@ insufficiente = att_tot > 0 && A.avanzamento < opt.frac_min * att_tot;
 A.successo = ~(ribaltato || fermo || insufficiente);
 A.causa_fallimento = "";
 if insufficiente, A.causa_fallimento = "avanzamento insufficiente"; end
-if fermo,         A.causa_fallimento = "fermo"; end          % piu' grave
-if ribaltato,     A.causa_fallimento = "ribaltamento"; end   % il piu' grave
+if fermo,         A.causa_fallimento = "fermo"; end          
+if ribaltato,     A.causa_fallimento = "ribaltamento"; end   
 
 %% ---------- B. planarita' del corpo ----------
 B.roll_rms   = rms_(run.rpy(sel,1));
@@ -165,7 +132,7 @@ B.pitch_rms  = rms_(run.rpy(sel,2));
 B.roll_max   = max(abs(run.rpy(sel,1)));
 B.pitch_max  = max(abs(run.rpy(sel,2)));
 
-z_rif = median(run.p(sel,3));       % quota di riferimento: la mediana a regime
+z_rif = median(run.p(sel,3));       % quota di riferimento
 B.z_rms      = rms_(run.p(sel,3) - z_rif);
 B.z_max      = max(abs(run.p(sel,3) - z_rif));
 B.z_media    = z_rif;
@@ -206,26 +173,9 @@ end
 if ~isempty(inContatto)
     D.appoggio_medio = mean(sum(inContatto(sel,:),2));   % zampe a terra in media
 
-    % SOTTO TRE PIEDI: la frazione di tempo in cui il tripode non c'e'.
-    %
-    % appoggio_medio non basta, ed e' un errore che ho gia' fatto: la media
-    % nasconde l'intermittenza. Su C1 a 2x valeva 2.12, sotto tre, ma una
-    % media di 3.0 e' compatibile sia con tre piedi sempre a terra sia con
-    % sei e zero alternati - due andature completamente diverse. Questa e'
-    % la metrica che le distingue, e a 1x vale 0.4% contro il 61% a 2x.
     D.sotto3_frac = mean(sum(inContatto(sel,:),2) < 3);
 end
 
-% RIMBALZO DEL CORPO: picco-picco di z, ciclo per ciclo.
-%
-% E' la misura dei "saltelli" visibili in animazione, e su C1 e' il modo in
-% cui l'andatura cede: 3.2 mm a 1x, 33.3 a 1.5x, 80.9 a 2x su un'altezza di
-% appoggio di 154 mm. Senza questa colonna una cella che fallisce da'
-% frazione_task negativa e nessun modo di dire perche'.
-%
-% Per ciclo e non su tutta la run: su tutta la run il picco-picco include
-% la deriva verticale e sovrastima. La mediana fra i cicli e' robusta ai
-% cicli anomali, che alle velocita' alte ci sono.
 if ha('p') && size(run.p,2) >= 3
     zc = run.p(sel,3);  tc = t(sel);
     if isfield(cfg,'T') && ~isempty(cfg.T) && cfg.T > 0 && numel(tc) > 3
@@ -244,43 +194,12 @@ if ha('p') && size(run.p,2) >= 3
     end
 end
 
-% LA VELOCITA' VERTICALE, CHE E' QUELLA CHE DISTINGUE I DUE CEDIMENTI.
-%
-% corpoZ_pp da sola non basta, e l'errore e' stato fatto: a 0.5x vale 29.1 mm
-% e a 1.5x 33.3 mm, praticamente uguali, e anche z_rms, roll_rms e pitch_rms
-% coincidono. Sulla sola ampiezza le due celle sono indistinguibili, e 0.5x
-% era stata classificata come fuori inviluppo per questo.
-%
-% Ma a 0.5x quei 30 mm sono percorsi in 2 s e a 1.5x in 0.67: uno DONDOLA,
-% l'altro SBATTE. In animazione si vede subito, nell'ampiezza no.
-% Corrispondenza nelle colonne che gia' c'erano: potenza_max 28.9 W contro
-% 285.7, tau_max 3.48 contro 9.14.
-%
-% Si usa l'rms e non il picco: il picco lo fa un singolo impatto, e sono due
-% regimi di moto che vanno confrontati, non due eventi.
 if ha('v') && size(run.v,2) >= 3
     D.corpoZ_vz = rms_(run.v(sel,3));
 end
 
 if ~isempty(inContatto) && ha('pf')
     % Scivolamento: spostamento orizzontale del piede mentre e' in appoggio.
-    %
-    % SI SCARTANO GLI APPOGGI TROPPO BREVI, e non e' cosmetica.
-    % Misurato su una run da 10 s: 83 segmenti di appoggio invece dei 60
-    % attesi (10 cicli x 6 zampe), mediana 0.435 s contro 0.500 nominali, e
-    % il 28% sotto i 0.1 s. I segmenti principali sono corretti; i ventitre
-    % in piu' sono tocchi spuri - il piede passa vicino al terreno durante
-    % il volo e la forza ricostruita supera per pochi campioni la soglia.
-    % Ogni tocco spurio veniva contato come un appoggio, e il moto di volo
-    % che lo accompagna - a velocita' di volo, non di appoggio - finiva
-    % nello scivolamento: slip_tot risultava 0.75 m su 1.37 m percorsi,
-    % cioe' il 55%, mentre il robot andava PIU' VELOCE del comando. Le due
-    % cose non possono stare insieme, ed era il conteggio a essere sbagliato.
-    %
-    % Non si alza la soglia di forza: allungherebbe il problema dall'altro
-    % lato, accorciando l'appoggio vero (la mediana e' gia' sotto il
-    % nominale perche' la soglia taglia inizio e fine, dove la penetrazione
-    % e' piccola). Si scartano i segmenti brevi.
     dmin = opt.durata_min_appoggio;
     if isnan(dmin)
         if isfield(cfg,'T') && isfield(cfg,'beta_stance')
@@ -343,15 +262,7 @@ elseif ~isempty(inContatto)
     D.distacchi = sum(max(0, trans - ceil(attese)));
 end
 
-% Dispersione del carico fra le zampe. La complanarita' cinematica non
-% garantisce quella di carico: a 1x le sei zampe stanno entro il 7%, a 0.5x
-% arrivano al 17% perche' il corpo si assesta dentro la cedevolezza del
-% contatto trovando un equilibrio asimmetrico.
-%
-% La guardia ha('Fc') non c'era, e queste due righe erano le uniche a leggere
-% run.Fc fuori da una guardia: su una run senza forze di contatto la funzione
-% moriva con un errore di campo inesistente, invece di restituire NaN come
-% promette la sua stessa intestazione. Fc resta OPZIONALE.
+% Dispersione del carico fra le zampe
 if ha('Fc')
     Fm = mean(run.Fc(sel, 3:3:18), 1);
     D.disp_carico = std(Fm) / max(mean(Fm), eps);
@@ -365,8 +276,6 @@ if isfield(run,'meta')
     for k = 1:numel(f), meta.(f{k}) = run.meta.(f{k}); end
 end
 
-% La colonna terreno non e' un ornamento: una campagna T2 e' girata su T5
-% senza che nulla nei risultati lo dicesse.
 riga = table( ...
     string(meta.controller), string(meta.task), string(meta.terreno), ...
     meta.run, meta.seed, string(meta.condizione), t(end)-t(1), ...
@@ -387,7 +296,6 @@ end
 
 %% ==================== helper ====================
 function [giu, nScartati, nSegmenti] = appoggiLunghi(g, t, dmin)
-%APPOGGILUNGHI  Il contatto, con i segmenti piu' brevi di dmin azzerati.
 g   = logical(g(:));
 giu = g;
 ini = find(diff([false; g]) == 1);
@@ -419,7 +327,7 @@ a = mod(a + pi, 2*pi) - pi;
 end
 
 function y = yaw_atteso(run, t)
-% imbardata attesa alla fine: integrale del comando, zero se non specificato
+% imbardata attesa alla fine
 y = 0;
 if isfield(run,'meta') && isfield(run.meta,'yaw_d') && ~isnan(run.meta.yaw_d)
     y = run.meta.yaw_d * (t(end) - t(1));

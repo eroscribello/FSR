@@ -1,5 +1,5 @@
 function G = dosso_profilo(d, z0)
-%DOSSO_PROFILO  Geometria del dosso di T4D: salita, cima piana, discesa.
+% Geometria del dosso di T4D: salita, cima piana, discesa.
 %
 %   G = dosso_profilo(cfg.terreno.dosso, cfg.floor_top)
 %
@@ -8,14 +8,6 @@ function G = dosso_profilo(d, z0)
 %   G.zg     @(x) quota della superficie sotto x (pavimento fuori dal dosso)
 %   G.pend   @(x) pendenza della superficie sotto x [rad], + in salita
 %   G.P      profilo [x z] del prisma (per l'STL)
-%
-% Unica fonte della geometria: applica_terreno ne scrive l'STL, script_T4D ne
-% ricava le finestre. Se cambia qui, cambia in entrambi.
-%
-% Il prisma e' convesso (salita, cima, discesa, fondo): serve, perche' il
-% contatto di Simscape usa l'inviluppo convesso del File Solid.
-%
-% Progetto FSR PhantomX - A. Russo
 
 x0 = d.x_inizio;
 x1 = x0 + d.H / tand(d.gradi_su);

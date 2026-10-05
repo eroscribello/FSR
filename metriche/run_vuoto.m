@@ -1,23 +1,14 @@
 function run = run_vuoto(N)
-%RUN_VUOTO  Struttura normalizzata di una simulazione: il contratto fra i
-%           simulatori e lo script di metriche.
-%
+% Struttura normalizzata di una simulazione
 %   run = run_vuoto        % struttura vuota, per vedere i campi
 %   run = run_vuoto(N)     % preallocata su N campioni
 %
-% PERCHE' ESISTE
-%   Il baseline Simscape e il simulatore ridotto producono output diversi.
-%   Se le metriche leggessero direttamente quegli output, servirebbero due
-%   funzioni di misura, e due funzioni di misura danno numeri non
-%   confrontabili appena una delle due cambia. Qui invece ogni simulatore
-%   scrive in QUESTA struttura, e metriche.m ne conosce una sola.
-%
-% CAMPI OBBLIGATORI            (senza questi metriche.m non parte)
+% CAMPI OBBLIGATORI            
 %   t        [N x 1]   tempo [s]
 %   p        [N x 3]   posizione del CoM nel frame mondo [m]
 %   rpy      [N x 3]   rollio, beccheggio, imbardata [rad]
 %
-% CAMPI OPZIONALI              (se mancano, le metriche relative danno NaN)
+% CAMPI OPZIONALI              
 %   v        [N x 3]   velocita' del CoM [m/s]        - se manca si deriva da p
 %   w        [N x 3]   velocita' angolare [rad/s]
 %   q        [N x 18]  angoli di giunto [rad]
@@ -41,7 +32,7 @@ function run = run_vuoto(N)
 %   Il baseline Simscape lavora in ordine Mux: converti con cfg.mux2can
 %   PRIMA di riempire questa struttura, non dopo.
 %
-% METADATI                     (servono a etichettare la riga di tabella)
+% METADATI                     
 %   meta.controller  'C1' | 'C2' | 'C3'
 %   meta.task        'T1' ... 'T7'
 %   meta.run         numero della ripetizione (1..5)
@@ -50,8 +41,6 @@ function run = run_vuoto(N)
 %   meta.yaw_d       velocita' di imbardata comandata [rad/s]
 %   meta.condizione  'nominale' | 'massa-10' | 'attrito-04' | ...
 %   meta.note        testo libero
-%
-% Progetto FSR PhantomX - A. Russo
 
 if nargin < 1, N = 0; end
 

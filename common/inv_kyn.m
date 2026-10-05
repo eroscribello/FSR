@@ -1,10 +1,9 @@
 function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
-%INV_KYN  Cinematica inversa di una zampa PhantomX (coxa - femore - tibia).
+% Cinematica inversa di una zampa PhantomX (coxa - femore - tibia).
 %#codegen
 %
 %  ------------------------------------------------------------------
-%  CONVENZIONI  (identiche per tutte e sei le zampe: NON modificare i
-%  segni caso per caso, il parametro "side" esiste apposta)
+%  CONVENZIONI  (identiche per tutte e sei le zampe)
 %  ------------------------------------------------------------------
 %   x      [m]   comando piede lungo l'asse X del corpo   (+ = AVANTI)
 %   y      [m]   comando piede lungo l'asse Y del corpo   (+ = SINISTRA)
@@ -18,24 +17,13 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
 %   phi    [rad] angolo giunto femore  (j_thigh_*)
 %   psi    [rad] angolo giunto tibia   (j_tibia_*)
 %
-%  ATTENZIONE: z e' POSITIVO VERSO IL BASSO. Il generatore di traiettoria
-%  deve quindi usare z0 positivo e ALZARE il piede SOTTRAENDO l'altezza di
-%  volo:  z = z0 - H*sin(...).
-%
-%  ------------------------------------------------------------------
-%  PERCHE' LE COSTANTI SONO DUPLICATE QUI
-%  ------------------------------------------------------------------
-%  Questa funzione gira dentro sei blocchi MATLAB Function e non puo'
-%  chiamare phantomx_config a runtime. Le costanti restano quindi duplicate,
-%  ma NON in silenzio: init_gait ricalcola la posa con i valori di cfg e la
-%  confronta con l'uscita di questa funzione, segnalando ogni divergenza.
-%  Se cambi un valore qui, cambialo anche in phantomx_config.m.
+%  ATTENZIONE: z e' POSITIVO VERSO IL BASSO
 
     % ---------- Geometria dei link [m] ----------
-    r_offset = 0.14;       % estensione radiale a riposo   (era 0.12)
+    r_offset = 0.14;       % estensione radiale a riposo  
     lc       = 0.054;      % coxa                          [URDF]
     lf       = 0.0661;     % femore                        [URDF]
-    lt = 0.152971;         % norm([0.03 0.15]): i sei Rigid Transform del modello                            % la guardia di init_gait
+    lt = 0.152971;         % norm([0.03 0.15])                      
 
     % ---------- 1. Dal frame CORPO al frame ZAMPA: R_z(-alpha) ----------
     % componente radiale (lungo l'asse della zampa)
@@ -46,8 +34,6 @@ function [theta, phi, psi] = inv_kyn(x, y, z, side, alpha)
     z_loc = z;
 
     % ---------- 2. Giunto COXA ----------
-    % un'unica formula per tutte le zampe: la simmetria destra/sinistra
-    % e' gia' gestita da "side".
     theta = atan2(y_loc, x_loc) * side;
 
     % ---------- 3. Piano femore/tibia (2R planare) ----------
