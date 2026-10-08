@@ -18,6 +18,10 @@ function figura_report(quale, arg2)
 %                    il .fig non contiene la grandezza che serve.
 %   fonte 'pacco'    legge le serie di results/diagnostica/ e confronta i TASK
 %                    fra loro, non i controllori: il carico esiste solo in C3P.
+%   fonte 'pacco2'   confronta DUE controllori sullo stesso task leggendo le
+%                    serie del carico: serve al confronto C2P / C3P.
+%   fonte 'zmp'      margine di stabilita' letto da stato_zmp, con i campioni
+%                    non calcolabili lasciati come interruzioni della curva.
 %   fonte 'tradotta' riapre un .fig gia' fatto e ne riscrive solo le scritte
 %                    con il vocabolario qui sotto. Serve per fattibilita.fig,
 %                    che e' prodotta da fattibilita.m e non da questo script:
@@ -146,6 +150,50 @@ for ip = 1:numel(PACCO)
     F(end).yl_en = PACCO(ip).yl_en;
 end
 
+% ----- il confronto del carico: C2P contro C3P, un task per figura -----
+% Le serie le scrive stato_pacco. La finestra di validita' non e' scritta qui:
+% viene letta dal campo t_bordo della riga di results/, cosi' la figura e la
+% tabella si fermano sempre nello stesso istante anche se le run cambiano.
+for ip = 1:2
+    tk = {'T4','T6'};  tk = tk{ip};
+    F(end+1) = F(1);                 %#ok<AGROW>
+    F(end).id    = ['pacco_' tk];
+    F(end).fonte = 'pacco2';
+    F(end).ctrl  = {'C2P','C3P'};
+    F(end).patt  = ['pacco_serie_%s_' tk];
+    F(end).asse  = 0;
+    F(end).curva = tk;               % qui 'curva' porta il nome del task
+    F(end).xlim  = [];
+    F(end).banda = [];
+    F(end).xl    = 't [s]';
+    F(end).yl    = 'spostamento del pacco [mm]';
+    F(end).rif   = [];
+    F(end).logx  = false;
+    F(end).segno = 'none';
+    F(end).xl_en = 't [s]';
+    F(end).yl_en = 'payload displacement [mm]';
+end
+
+% ----- il margine ZMP -----
+% Esiste solo su phantomx_sim_zero, quindi solo per C1 e C2: in
+% phantomx_sim_attitude il blocco di calcolo non c'e'.
+F(end+1) = F(1);
+F(end).id    = 'zmp';
+F(end).fonte = 'zmp';
+F(end).ctrl  = {'C2'};               % cambia qui per usare C1
+F(end).patt  = 'zmp_%s_T2';          % results/diagnostica/zmp_C2_T2.csv
+F(end).asse  = 0;
+F(end).curva = '';
+F(end).xlim  = [];
+F(end).banda = [];
+F(end).xl    = 't [s]';
+F(end).yl    = 'margine di stabilita'' [m]';
+F(end).rif   = [];
+F(end).logx  = false;
+F(end).segno = 'none';
+F(end).xl_en = 't [s]';
+F(end).yl_en = 'stability margin [m]';
+
 % ----- la figura della fattibilita': non la costruiamo, la traduciamo -----
 % Le scritte di grafici/fattibilita.fig arrivano da fattibilita.m. Qui si
 % sostituiscono per frasi, non per stringhe intere, perche' i titoli sono
@@ -202,6 +250,8 @@ for k = da_fare
             fig = da_fig(f, ctrl_qui, STILE);
         case 'csv',      fig = da_csv(f, CTRL, STILE, en);
         case 'pacco',    fig = da_pacco(f, STILE_TASK, en);
+        case 'pacco2',   fig = da_pacco2(f, en);
+        case 'zmp',      fig = da_zmp(f, en);
         case 'tradotta', fig = tradotta(f, VOCAB);
         otherwise,       error('figura_report:fonte', 'Fonte ''%s'' sconosciuta.', f.fonte);
     end
@@ -405,6 +455,160 @@ ylabel(ax, f.yl, 'FontSize', 9);
 xlim(ax, [0 tmax]);
 ylim(ax, [0 1.1*GIOCO]);
 legend(ax, 'Location', 'northwest', 'FontSize', 9);
+end
+
+% =====================================================================
+function fig = da_pacco2(f, en)
+%DA_PACCO2  Spostamento del carico: anello d'assetto spento contro acceso.
+%
+% PERCHE' UNA TAVOLOZZA LOCALE
+%   Qui le due curve non sono due controllori del confronto principale ma due
+%   configurazioni dello stesso impianto carico. C2P prende l'arancione di C2,
+%   di cui e' la versione con il pacco, ed e' tratteggiato; C3P prende il viola
+%   che ha gia' nelle altre figure, ma continuo, perche' e' il caso che
+%   funziona e deve leggersi come la curva di riferimento.
+%
+% LA FINESTRA DI VALIDITA' NON E' SCRITTA QUI
+%   Si legge da results/<task>_<ctrl>.csv, colonna t_bordo: e' l'istante in cui
+%   la run e' stata troncata perche' un piede ha raggiunto il bordo del
+%   pavimento. Oltre quell'istante il cubo esce dalla scena insieme al robot e
+%   lo spostamento misura una caduta, non uno scivolamento.
+
+GIOCO = 50;                               % [mm] gioco fra cubo e vassoio
+STL = struct('C2P', struct('col', [0.835 0.369 0.000], 'tratto', '--', 'spess', 1.1), ...
+             'C3P', struct('col', [0.400 0.200 0.600], 'tratto', '-',  'spess', 1.3));
+cfg  = phantomx_config();
+t_in = 2*cfg.T;                           % stesso avvio di regime di stato_pacco
+task = f.curva;
+
+fig = asse_nuovo();
+ax  = gca(fig);
+tmax = 0;
+
+for i = 1:numel(f.ctrl)
+    c   = f.ctrl{i};
+    src = fullfile('results', 'diagnostica', [sprintf(f.patt, c) '.csv']);
+    if ~isfile(src)
+        error('figura_report:serie', ['Manca %s.\n' ...
+            'La serie si scrive con stato_pacco: dopo la run del task,\n' ...
+            '  stato_pacco(<out>, ''%s'', ''%s'')'], src, task, c);
+    end
+    T = readtable(src);
+
+    % finestra di validita' dalla riga di campagna
+    t_fin = Inf;
+    rig = fullfile('results', sprintf('%s_%s.csv', task, c));
+    if isfile(rig)
+        R = readtable(rig);
+        if ismember('t_bordo', R.Properties.VariableNames) && ~isnan(R.t_bordo(1))
+            t_fin = R.t_bordo(1);
+        end
+    else
+        fprintf(2, '  manca %s: nessun troncamento al bordo per %s\n', rig, c);
+    end
+
+    sel = T.t >= t_in & T.t <= t_fin;
+    s = STL.(c);
+    plot(ax, T.t(sel), 1e3*T.d(sel), s.tratto, 'Color', s.col, ...
+         'LineWidth', s.spess, 'DisplayName', c);
+    tmax = max(tmax, max(T.t(sel)));
+    fprintf('  %-4s  %-26s  fino a %.2f s   max %.1f mm\n', ...
+            c, [sprintf(f.patt,c) '.csv'], max(T.t(sel)), 1e3*max(T.d(sel)));
+end
+
+xlabel(ax, f.xl, 'FontSize', 9);
+ylabel(ax, f.yl, 'FontSize', 9);
+xlim(ax, [t_in tmax]);
+ylim(ax, [0 2*GIOCO]);
+legend(ax, 'Location', 'northwest', 'FontSize', 9);
+
+% La fascia va dopo i limiti, e opaca: con FaceAlpha exportgraphics
+% rasterizzerebbe la zona e il PDF smetterebbe di essere vettoriale.
+yl = ylim(ax);
+pb = patch(ax, [t_in tmax tmax t_in], [GIOCO GIOCO yl(2) yl(2)], ...
+           [0.90 0.90 0.90], 'EdgeColor', 'none', 'HandleVisibility', 'off');
+uistack(pb, 'bottom');
+set(ax, 'Layer', 'top');
+if en, et = sprintf('threshold, %d mm', GIOCO);
+else,  et = sprintf('gioco cubo-vassoio, %d mm', GIOCO);
+end
+yline(ax, GIOCO, '-', et, 'Color', [0.25 0.25 0.25], 'LineWidth', 1.0, ...
+      'LabelHorizontalAlignment', 'left', 'LabelVerticalAlignment', 'bottom', ...
+      'HandleVisibility', 'off');
+end
+
+% =====================================================================
+function fig = da_zmp(f, en)
+%DA_ZMP  Margine di stabilita' nel tempo, con i buchi lasciati visibili.
+%
+% I CAMPIONI NON CALCOLABILI NON SI DISEGNANO
+%   stato_zmp li marca nella colonna non_calcolabile e mette NaN nel margine:
+%   sono gli istanti in cui meno di tre zampe superano Fmin e il poligono non
+%   esiste. La curva si interrompe, e una riga di tacche in basso dice dove.
+%   Disegnarli a zero, come fa lo Scope, li farebbe sembrare un margine nullo.
+
+c   = f.ctrl{1};
+src = fullfile('results', 'diagnostica', [sprintf(f.patt, c) '.csv']);
+if ~isfile(src)
+    error('figura_report:zmp', ['Manca %s.\n' ...
+        'Si produce cosi'':  log_zmp(''on'');  script_T2;  stato_zmp(t2_out, ''T2'', ''%s'')'], ...
+        src, c);
+end
+T = readtable(src);
+cfg = phantomx_config();
+
+fig = asse_nuovo();
+ax  = gca(fig);
+
+plot(ax, T.t, T.margine, '-', 'Color', [0 0.447 0.698], 'LineWidth', 0.8, ...
+     'DisplayName', c);
+
+% previsione geometrica del tripode: disegnata DOPO la curva, cosi' resta
+% sopra e si legge anche dove la curva la attraversa
+g_tri = zmp_geom_tripode(cfg);
+yline(ax, g_tri, '--', 'Color', [0.15 0.15 0.15], 'LineWidth', 1.4, ...
+      'DisplayName', 'tripod prediction');
+
+rifinisci_zmp(ax, f, T, g_tri, en);
+fprintf('  %-4s  %-22s  %d campioni, %.1f%% non calcolabili\n', ...
+        c, [sprintf(f.patt,c) '.csv'], height(T), 100*mean(T.non_calcolabile));
+end
+
+function rifinisci_zmp(ax, f, T, g_tri, en)
+xlabel(ax, f.xl, 'FontSize', 9);
+ylabel(ax, f.yl, 'FontSize', 9);
+xlim(ax, [0 max(T.t)]);
+yl = [min(0, min(T.margine)) 1.15*max(T.margine)];
+if ~all(isfinite(yl)), yl = [0 0.3]; end
+ylim(ax, yl);
+
+% tacche in basso dove la misura non c'e'
+k = find(T.non_calcolabile > 0.5);
+if ~isempty(k)
+    h = yl(1) + 0.035*diff(yl);
+    plot(ax, T.t(k), repmat(yl(1), numel(k), 1) + 0.5*(h-yl(1)), '.', ...
+         'Color', [0.835 0.369 0], 'MarkerSize', 3, ...
+         'DisplayName', 'not computable');
+end
+legend(ax, 'Location', 'northwest', 'FontSize', 9);
+end
+
+function d = zmp_geom_tripode(cfg)
+p = zeros(2,6);
+for i = 1:6
+    p(:,i) = [cfg.p_hip(1,i) + cfg.r_offset*cos(cfg.alpha(i));
+              cfg.p_hip(2,i) + cfg.r_offset*sin(cfg.alpha(i))];
+end
+d = Inf;
+for fase = [0 0.5]
+    tri = find(abs(cfg.phase(:)' - fase) < 1e-9);
+    if numel(tri) ~= 3, continue; end
+    for k = 1:3
+        a = p(:, tri(k));  b = p(:, tri(mod(k,3)+1));
+        e = b - a;
+        d = min(d, abs(e(1)*(0-a(2)) - e(2)*(0-a(1))) / norm(e));
+    end
+end
 end
 
 % =====================================================================

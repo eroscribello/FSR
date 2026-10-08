@@ -124,6 +124,17 @@ if isfile(f)
     o = detectImportOptions(f, 'TextType', 'string');
     o = setvartype(o, {'task','controller','esito','data'}, 'string');
     V = readtable(f, o);
+    % Il CSV sul disco puo' essere stato scritto da una versione precedente,
+    % con meno colonne: le mancanti si aggiungono vuote invece di far fallire
+    % il merge e perdere le righe degli altri task.
+    manca = setdiff(T.Properties.VariableNames, V.Properties.VariableNames, 'stable');
+    for k_ = 1:numel(manca)
+        if isnumeric(T.(manca{k_}))
+            V.(manca{k_}) = nan(height(V), 1);
+        else
+            V.(manca{k_}) = strings(height(V), 1);
+        end
+    end
     V = V(V.task ~= R.task, T.Properties.VariableNames);
     T = [V; T];
 end
