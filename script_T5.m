@@ -29,6 +29,7 @@ allinea_stimatore(t5_mdl);
 
 if strcmp(t5_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t5_info.carico, commenta_carico(t5_mdl, 'off'); else, commenta_carico(t5_mdl); end
+    if t5_info.assetto, spegni_assetto('off', t5_mdl); else, spegni_assetto('on', t5_mdl); end
 end
 
 fprintf('\nT5: controllore %s, ostacolo singolo, %g s a velocita'' nominale\n', ...

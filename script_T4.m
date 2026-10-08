@@ -68,6 +68,7 @@ allinea_stimatore(t4_mdl);
 
 if strcmp(t4_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t4_info.carico, commenta_carico(t4_mdl, 'off'); else, commenta_carico(t4_mdl); end
+    if t4_info.assetto, spegni_assetto('off', t4_mdl); else, spegni_assetto('on', t4_mdl); end
 end
 
 fprintf('\nT4: controllore %s, rampa di %g gradi, %g s a velocita'' nominale\n', ...
@@ -203,8 +204,27 @@ R = struct('t_ini',nan_, 't_tutti',nan_, 'x_ini',nan_, 'z_piano',nan_, ...
     'h_t',nan(size(t)), 'h_piano',nan_, 'dh',nan_, 'v_rapporto',nan_, ...
     'salito',false, 'causa','');
 
-zs_ord  = sort(zf(fermo));                 
-R.z_piano = zs_ord(max(1, round(0.10*numel(zs_ord))));   
+zs_ord  = sort(zf(fermo));
+if isempty(zs_ord)
+    % Senza questo controllo l'errore e' "Index exceeds array bounds" su
+    % zs_ord, che non dice niente. Il problema non e' la soglia della rampa:
+    % e' che nessun piede risulta mai fermo, cioe' o la run e' divergente o
+    % e' troppo corta perche' un tratto fermo duri un quarto di appoggio.
+    vmin = inf;
+    for i_ = 1:6
+        c_ = 3*(i_-1) + (1:3);
+        vmin = min(vmin, min(vecnorm(gradient(r.pf(:,c_).', dt).', 2, 2)));
+    end
+    error('script_T4:appoggi', ...
+        ['Nessun piede riconosciuto in appoggio in tutta la run.\n' ...
+         '  durata %.2f s, %d campioni, dt %.4g s\n' ...
+         '  tratto fermo minimo richiesto: %d campioni (un quarto di appoggio)\n' ...
+         '  velocita'' minima di un piede: %.4f m/s, soglia %.3f m/s\n' ...
+         'Se la velocita'' minima e'' ben sopra la soglia il robot non si ferma\n' ...
+         'mai: guardare la quota del corpo e l''assetto prima di toccare le soglie.'], ...
+         t(end), numel(t), dt, round(0.25*cfg.T_stance/dt), vmin, v_app);
+end
+R.z_piano = zs_ord(max(1, round(0.10*numel(zs_ord))));
 su = fermo & (zf - R.z_piano > soglia);
 if ~any(su(:))
     R.causa = 'non raggiunge la rampa';

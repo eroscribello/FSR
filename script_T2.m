@@ -38,6 +38,7 @@ allinea_stimatore(t2_mdl);
 
 if strcmp(t2_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t2_info.carico, commenta_carico(t2_mdl, 'off'); else, commenta_carico(t2_mdl); end
+    if t2_info.assetto, spegni_assetto('off', t2_mdl); else, spegni_assetto('on', t2_mdl); end
 end
 
 t2_haTar = isfield(t2_cfg,'t2_taratura') && ~isempty(t2_cfg.t2_taratura);

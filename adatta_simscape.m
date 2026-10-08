@@ -102,9 +102,13 @@ if opt.verbose
 end
 
 %% ==================== posa del corpo ====================
-[t_px, x_b] = primitiva(L, 'Px', 'p', 'm');
-[~,    y_b] = primitiva(L, 'Py', 'p', 'm');
-[~,    z_b] = primitiva(L, 'Pz', 'p', 'm');
+% Il ramo del carico va escluso: e' un secondo giunto a sei gradi di
+% liberta', e quando il pacco scivola la sua escursione batte quella del
+% robot. Stesso nome usato da commenta_carico e stato_pacco.
+as_carico = '6_DOF_Joint1';
+[t_px, x_b] = primitiva(L, 'Px', 'p', 'm', as_carico);
+[~,    y_b] = primitiva(L, 'Py', 'p', 'm', as_carico);
+[~,    z_b] = primitiva(L, 'Pz', 'p', 'm', as_carico);
 
 if isempty(x_b) || isempty(y_b) || isempty(z_b)
     error('adatta_simscape:corpo', ...
@@ -152,9 +156,9 @@ p = [interp1(t_px, x_b, t, 'linear','extrap'), ...
      interp1(t_px, z_b, t, 'linear','extrap')];
 
 % velocita': dalle primitive se ci sono, altrimenti derivata della posizione
-[t_vx, vx] = primitiva(L, 'Px', 'v', 'm/s');
-[t_vy, vy] = primitiva(L, 'Py', 'v', 'm/s');
-[t_vz, vz] = primitiva(L, 'Pz', 'v', 'm/s');
+[t_vx, vx] = primitiva(L, 'Px', 'v', 'm/s', as_carico);
+[t_vy, vy] = primitiva(L, 'Py', 'v', 'm/s', as_carico);
+[t_vz, vz] = primitiva(L, 'Pz', 'v', 'm/s', as_carico);
 if ~isempty(vx) && ~isempty(vy) && ~isempty(vz)
     v = [interp1(t_vx, vx, t, 'linear','extrap'), ...
          interp1(t_vy, vy, t, 'linear','extrap'), ...
@@ -392,10 +396,24 @@ for k = 1:numel(ids)
 end
 end
 
-function [t, y] = primitiva(L, prim, var, unita)
+function [t, y] = primitiva(L, prim, var, unita, escludi)
+%PRIMITIVA  La serie di una primitiva, scelta fra i nodi omonimi del log.
+%
+% SI SCEGLIE PER ESCURSIONE, E VA FILTRATO PRIMA
+%   Fra piu' nodi con lo stesso nome vince quello che si muove di piu'. Con
+%   il solo giunto del corpo e' la scelta giusta. Con il carico attivo i
+%   giunti a sei gradi di liberta' sono due, e se il pacco scivola via la
+%   sua escursione supera quella del robot: 'p' diventerebbe la traiettoria
+%   del cubo, e con essa 'pf', ricostruito per cinematica diretta da quella
+%   posa. E' successo su C2P, dove il pacco cade: la distanza risultava
+%   73 m su T4 e nessun piede veniva piu' riconosciuto in appoggio.
+%   'escludi' e' un'espressione regolare sul percorso del nodo: i rami che
+%   vi corrispondono non partecipano alla scelta.
+if nargin < 5, escludi = ''; end
 t = [];  y = [];
 for k = 1:numel(L)
     if ~strcmp(L(k).nome, prim), continue; end
+    if ~isempty(escludi) && ~isempty(regexp(L(k).percorso, escludi, 'once')), continue; end
     try
         [yk, tk] = serieSI(L(k).nodo.(var).series, unita);
     catch

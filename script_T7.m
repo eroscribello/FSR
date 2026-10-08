@@ -57,6 +57,7 @@ for t7_i = 1:numel(t7_J)
 
     if strcmp(t7_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
         if t7_info.carico, commenta_carico(t7_mdl, 'off'); else, commenta_carico(t7_mdl); end
+        if t7_info.assetto, spegni_assetto('off', t7_mdl); else, spegni_assetto('on', t7_mdl); end
     end
     applica_disturbo(t7_mdl, t7_J(t7_i), 'applica', ...
                      struct('t0', t7_t0, 'durata', t7_larg, 'asse', 'y'));

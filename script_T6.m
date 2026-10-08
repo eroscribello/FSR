@@ -7,7 +7,13 @@
 t6_cfg       = phantomx_config();
 
 t6_ctrl      = 'C2';       % 'C1' | 'C2' | 'C3'
-t6_dur       = 25;          % [s] Durata fissa della simulazione
+t6_dur       = 32;          % [s] Durata fissa della simulazione
+% 32 e non 25: l'ultimo ostacolo finisce a x = 3.388 m e la zampa posteriore
+% lo lascia quando il corpo e' a 3.388 + 0.224 = 3.612 m. Alle velocita' di
+% regime misurate (0.116 / 0.125 / 0.119 m/s) ci arrivano a 31.1 / 29.0 /
+% 30.3 s. A 25 s la corsa finiva con il robot ancora sul sesto e settimo
+% ostacolo, e "non ha superato il percorso" era un artefatto della durata.
+t6_xbordo    = 4 - 0.05;    % [m] il pavimento e' il cubo 8x8: x in [-4, 4]
 t6_soglia_su = 0.015;       % [m] appoggio piu' alto del piano = sull'ostacolo
 t6_v_appoggio = 0.05;       % [m/s] piede piu' lento di cosi' = fermo, in appoggio
 
@@ -22,6 +28,7 @@ applica_inerzie(t6_mdl);
 allinea_stimatore(t6_mdl);
 if strcmp(t6_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t6_info.carico, commenta_carico(t6_mdl, 'off'); else, commenta_carico(t6_mdl); end
+    if t6_info.assetto, spegni_assetto('off', t6_mdl); else, spegni_assetto('on', t6_mdl); end
 end
 
 fprintf('\nT6: controllore %s, sette ostacoli, %g s a velocita'' nominale\n', ...
@@ -36,15 +43,19 @@ t6_run = adatta_simscape(t6_out, struct( ...
 clear OVERRIDE_C2
 init_gait                                                      % ripristina cfg
 
-%% ---- verifica bordo del pavimento (TRONCAMENTO DISABILITATO) ----
-t6_t_bordo = NaN;
-if isfield(t6_run,'pf') && ~isempty(t6_run.pf)
-    k_bordo = find(any(t6_run.pf(:, 1:3:18) > (4 - 0.05), 2), 1, 'first');
-    if ~isempty(k_bordo)
-        t6_t_bordo = t6_run.t(k_bordo);
-        fprintf(2, ['\n  [ATTENZIONE] Un piede supera il bordo del pavimento a t = %.2f s:\n' ...
-                    '  La simulazione prosegue fino a %g s come richiesto.\n'], t6_t_bordo, t6_dur);
-    end
+%% ---- troncamento al bordo del pavimento ----
+% Il pavimento finisce a x = 3.95 m, undici centimetri dopo l'ultimo
+% ostacolo. Un piede che lo supera non trova piu' contatto e il robot cade
+% dal bordo: roll_max va a pi greco e le metriche d'assetto diventano la
+% geometria del pavimento invece del controllore. E' l'artefatto che
+% prova_soglia_T6.m documenta e che script_T4D toglie gia' con
+% t4d_taglia_bordo. Finche' la durata era 25 s il bordo non si raggiungeva e
+% il troncamento non serviva; a 32 s serve.
+[t6_run, t6_t_bordo] = t6_taglia_bordo(t6_run, t6_xbordo);
+if ~isnan(t6_t_bordo)
+    fprintf(2, ['\n  [bordo] Un piede raggiunge x = %.2f m a t = %.2f s.\n' ...
+                '  La run e'' troncata li'': le metriche NON includono la caduta.\n'], ...
+            t6_xbordo, t6_t_bordo);
 end
 
 %% ---- verifica x comune (TRONCAMENTO DISABILITATO) ----
@@ -62,7 +73,7 @@ else
             t6_xfine, t6_dur, max(t6_run.p(:,1)));
 end
 
-% Calcolo metriche sull'intero intervallo temporale (25 secondi)
+% Metriche sull'intervallo effettivo della run (troncato al bordo, se serve)
 t6_riga = metriche(t6_run, t6_cfg, struct('t_regime', 2*t6_cfg.T));
 t6_riga.t_bordo   = t6_t_bordo;
 t6_riga.x_fine    = t6_xfine;
@@ -147,6 +158,25 @@ xlabel('t [s]'); ylabel('z piedi - piano [mm]');
 salva_grafico(sprintf('T6_%s', t6_ctrl));
 
 %% ================= helper =================
+function [r, t_bordo] = t6_taglia_bordo(r, x_bordo)
+%T6_TAGLIA_BORDO  Tronca la run al primo campione con un piede oltre il bordo.
+% Stessa logica di t4d_taglia_bordo e di rm_taglia: taglia tutti i campi che
+% hanno una riga per istante, lasciando intatto il resto della struttura.
+t_bordo = NaN;
+if ~isfield(r,'pf') || isempty(r.pf), return; end
+N = numel(r.t);
+k = find(any(r.pf(:, 1:3:18) > x_bordo, 2), 1, 'first');
+if isempty(k), return; end
+t_bordo = r.t(k);
+f = fieldnames(r);
+for i = 1:numel(f)
+    v = r.(f{i});
+    if (isnumeric(v) || islogical(v)) && size(v,1) == N && N > 1
+        r.(f{i}) = v(1:k-1, :);
+    end
+end
+end
+
 function P = t6_passaggio(r, soglia, v_app, cfg, t_regime)
 T = cfg.T;
 if ~isfield(r,'pf') || isempty(r.pf)

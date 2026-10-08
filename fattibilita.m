@@ -208,28 +208,66 @@ if opt.grafico
         end
     end
 
-    nexttile;
-    b = bar(100*vr); grid on; set(gca,'XTickLabel',et);
-    yline(100, 'k-', 'stallo', 'LineWidth',1.8);
-    yline(100*opt.tau_lavoro/opt.tau_lim, 'r--', 'carico raccomandato (1/5 stallo)', 'LineWidth',1.5);
-    ylabel('coppia efficace del giunto peggiore / stallo  [%]'); ylim([0 110]);
-    legend(b, opt.ctrl, 'Location','northwest');
-    title(sprintf('Carico sostenuto: %.0f-%.0f%% dello stallo, %.1f-%.1fx il raccomandato', ...
-          100*min(vr(:)), 100*max(vr(:)), min(vr(:))*opt.tau_lim/opt.tau_lavoro, ...
-          max(vr(:))*opt.tau_lim/opt.tau_lavoro));
+    ax_sx = nexttile;
+    b = bar(100*vr); grid on; set(ax_sx,'XTickLabel',et);
+    % La scritta "stall" va all'estremo SINISTRO della linea: a destra, dove
+    % sta per difetto, finirebbe sotto la seconda legenda.
+    yline(ax_sx, 100, 'k-', 'stall', 'LineWidth',1.8, ...
+          'LabelHorizontalAlignment','right');
+    % l'etichetta del carico raccomandato passa alla seconda legenda: tenerla
+    % anche sulla linea la ripeterebbe
+    yline(ax_sx, 100*opt.tau_lavoro/opt.tau_lim, 'k--', '', 'LineWidth',1.5);
+    ylabel(ax_sx, 'worst joint RMS torque / stall  [%]'); ylim(ax_sx, [0 110]);
+    legend(ax_sx, b, opt.ctrl, 'Location','northwest');
+    title(ax_sx, sprintf('Continuous load'));
+    fa_legenda2(ax_sx, '--', [0 0 0], 1.5, 'recommended load (1/5 stall)', 'northeast');
 
-    nexttile;
-    b = bar(vp); grid on; set(gca,'XTickLabel',et);
-    yline(1, 'k-', 'stallo (datasheet)', 'LineWidth',1.8);
-    yline(opt.tau_lim_urdf/opt.tau_lim, 'k--', 'limite URDF');
-    ylabel('coppia di picco / stallo');
-    title(sprintf('Picchi d''urto: fino a %.1fx lo stallo, su al massimo il %.2f%% dei campioni', ...
-          max(vp(:)), 100*sat_max));
+    ax_dx = nexttile;
+    b = bar(vp); grid on; set(ax_dx,'XTickLabel',et);
+    % l'etichetta dello stallo passa alla seconda legenda: tenerla anche
+    % sulla linea la ripeterebbe
+    yline(ax_dx, 1, 'k-', '', 'LineWidth',1.8);
+    yline(ax_dx, opt.tau_lim_urdf/opt.tau_lim, 'k--', 'URDF limit');
+    ylabel(ax_dx, 'peak torque / stall');
+    title(ax_dx, sprintf('Impact peaks'));
+    fa_legenda2(ax_dx, '-', [0 0 0], 1.8, 'stall (datasheet)', 'northeast');
     salva_grafico('fattibilita', fig);
 end
 end
 
 %% ================= helper =================
+function lg = fa_legenda2(ax, tratto, colore, spess, etichetta, posizione)
+%FA_LEGENDA2  Una seconda legenda sullo stesso riquadro.
+%
+% MATLAB tiene UNA legenda per asse: chiamare legend() una seconda volta non
+% ne aggiunge un'altra, sostituisce la prima. Per averne due si sovrappone un
+% asse trasparente e si lega la seconda legenda a quello. La curva disegnata
+% qui dentro e' un segnaposto a NaN: non compare nel grafico, serve solo a
+% dare alla legenda un campione da mostrare.
+%
+% La posizione si legge in pixel rispetto alla figura con getpixelposition
+% ricorsiva e non da ax.Position: dentro un tiledlayout quest'ultima e'
+% riferita al layout e metterebbe la legenda fuori posto. Subito dopo si
+% torna a unita' normalizzate, cosi' l'esportazione scala tutto insieme.
+
+drawnow                                 % il layout fissa le posizioni qui
+fig = ancestor(ax, 'figure');
+pix = getpixelposition(ax, true);
+
+axl = axes('Parent', fig, 'Units','pixels', 'Position', pix, ...
+           'Color','none', 'XColor','none', 'YColor','none', ...
+           'XTick',[], 'YTick',[], 'HitTest','off');
+axl.Units = 'normalized';
+hold(axl, 'on');
+
+h = plot(axl, nan, nan, tratto, 'Color', colore, 'LineWidth', spess);
+lg = legend(axl, h, etichetta, 'Location', posizione);
+lg.Box = 'on';
+
+set(fig, 'CurrentAxes', ax);   % la corrente torna quella dei dati, senza
+                               % riordinare la pila come farebbe axes(ax)
+end
+
 function v = fa_num(T, r, c)
 v = NaN;
 if ismember(c, T.Properties.VariableNames)

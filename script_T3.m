@@ -42,6 +42,7 @@ allinea_stimatore(t3_mdl);
 
 if strcmp(t3_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t3_info.carico, commenta_carico(t3_mdl, 'off'); else, commenta_carico(t3_mdl); end
+    if t3_info.assetto, spegni_assetto('off', t3_mdl); else, spegni_assetto('on', t3_mdl); end
 end
 
 fprintf('\nT3: controllore %s, terreno T3 (piano liscio)\n', t3_ctrl);

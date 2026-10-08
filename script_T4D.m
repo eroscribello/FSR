@@ -65,6 +65,7 @@ allinea_stimatore(t4d_mdl);
 
 if strcmp(t4d_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
     if t4d_info.carico, commenta_carico(t4d_mdl, 'off'); else, commenta_carico(t4d_mdl); end
+    if t4d_info.assetto, spegni_assetto('off', t4d_mdl); else, spegni_assetto('on', t4d_mdl); end
 end
 t4d_G = dosso_profilo(t4d_cfg.terreno.dosso, t4d_cfg.floor_top);
 

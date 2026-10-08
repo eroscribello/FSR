@@ -65,6 +65,7 @@ try
             allinea_stimatore(rm_mdl); 
             if strcmp(rm_mdl, 'phantomx_sim_attitude')   % il pacco resta solo per C3P
                 if rm_info.carico, commenta_carico(rm_mdl, 'off'); else, commenta_carico(rm_mdl); end
+                if rm_info.assetto, spegni_assetto('off', rm_mdl); else, spegni_assetto('on', rm_mdl); end
             end
             rm_terreno_ora = [rm_t '|' rm_mdl];
         end
