@@ -191,6 +191,11 @@ if ~isempty(mancanti)
     end
 end
 
+%% 5b. Gain della forza di rampa nei piedi (solo phantomx_sim_zero)
+% Senza rampa il convertitore della sua forza resta scollegato e la Gain 3x3
+% non compila: si azzera in memoria, e si ripristina quando la rampa torna.
+allinea_gain_rampa(mdl, ismember('rampa', elementi_attivi));
+
 %% 6. Salvataggio stato nel Base Workspace
 assignin('base', 'TERRENO_ATTIVO', task);
 info = struct('task', task, 'attivi', {elementi_attivi}, 'modello', mdl);
